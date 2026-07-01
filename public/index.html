@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Time Stamp — 怀旧日期水印</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到主内容</a>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Time Stamp</h1>
+      <span class="topbar-sub">批量给照片加怀旧日期水印</span>
+    </div>
+    <div class="topbar-right">
+      <button type="button" id="addBtn" class="ghost" hidden>添加图片</button>
+      <button type="button" id="clearBtn" class="ghost" hidden>清空</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="dropzone" class="dropzone">
+      <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff" hidden aria-label="选择图片文件">
+      <p>拖拽图片到此处，或 <button type="button" id="pickBtn" class="link-btn">选择文件</button></p>
+      <p class="hint">支持 JPG / PNG / WebP / TIFF，可多选</p>
+    </section>
+
+    <div class="app" id="workspace" hidden>
+      <section class="stage" aria-label="预览区">
+        <div class="preview-bar">
+          <span id="previewLabel" class="preview-label" aria-live="polite"></span>
+          <span id="countLabel" class="count"></span>
+        </div>
+        <div class="preview-wrap" id="previewWrap">
+          <img id="previewImg" alt="水印预览" hidden>
+          <p id="previewLoading" class="preview-msg" hidden>生成预览中…</p>
+          <p id="previewEmpty" class="preview-msg">点击底部缩略图预览…</p>
+        </div>
+
+        <details class="meta-collapse" id="metaPanel" hidden>
+          <summary>图片信息</summary>
+          <div class="meta-body">
+            <h3 id="metaTitle"></h3>
+            <dl id="metaList"></dl>
+          </div>
+        </details>
+
+        <div class="filmstrip" id="filmstrip" role="list" aria-label="图片列表"></div>
+      </section>
+
+      <aside class="sidebar" aria-label="水印设置">
+        <h2>水印设置</h2>
+
+        <div class="field">
+          <label for="position">位置</label>
+          <select id="position"></select>
+        </div>
+
+        <div class="field">
+          <label for="fontSearch">字体</label>
+          <input type="text" id="fontSearch" placeholder="搜索字体…" autocomplete="off" spellcheck="false" aria-describedby="fontHint">
+          <select id="font" size="6" aria-label="字体列表"></select>
+          <p id="fontHint" class="field-hint" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="fontSize">字号 <span class="field-suffix">px，留空自动</span></label>
+          <input type="number" id="fontSize" min="8" placeholder="自动" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="color">颜色</label>
+          <input type="color" id="color" value="#ff7a1a">
+        </div>
+
+        <div class="field">
+          <label for="dateSource">日期来源</label>
+          <select id="dateSource">
+            <option value="auto">自动（EXIF → 文件时间）</option>
+            <option value="exif">仅 EXIF</option>
+            <option value="file">文件修改时间</option>
+          </select>
+        </div>
+
+        <button type="button" id="exportBtn" class="primary">批量导出下载</button>
+        <p id="status" class="status" aria-live="polite"></p>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
