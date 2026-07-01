@@ -1,0 +1,27 @@
+{
+  "name": "time-stamp-cli",
+  "version": "1.0.0",
+  "main": "index.js",
+  "bin": {
+    "time-stamp": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "image",
+    "exif",
+    "timestamp",
+    "date",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "ISC",
+  "description": "给目录下的图片副本打上拍摄/创建日期（右下角），用于怀旧。",
+  "dependencies": {
+    "exifr": "^7.1.3",
+    "sharp": "^0.35.2"
+  }
+}
