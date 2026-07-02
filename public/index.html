@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Time Stamp — 怀旧日期水印</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/dark.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#workspace">跳到主内容</a>
@@ -15,14 +17,14 @@
       <span class="topbar-sub">批量给照片加怀旧日期水印</span>
     </div>
     <div class="topbar-right">
-      <button type="button" id="addBtn" class="ghost" hidden>添加图片</button>
-      <button type="button" id="clearBtn" class="ghost" hidden>清空</button>
+      <sl-button id="addBtn" variant="default" size="small" hidden>添加图片</sl-button>
+      <sl-button id="clearBtn" variant="default" size="small" hidden>清空</sl-button>
     </div>
   </header>
 
   <main>
     <section id="dropzone" class="dropzone">
-      <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff" hidden aria-label="选择图片文件">
+      <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp/image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff" hidden aria-label="选择图片文件">
       <p>拖拽图片到此处，或 <button type="button" id="pickBtn" class="link-btn">选择文件</button></p>
       <p class="hint">支持 JPG / PNG / WebP / TIFF，可多选</p>
     </section>
@@ -31,6 +33,7 @@
       <section class="stage" aria-label="预览区">
         <div class="preview-bar">
           <span id="previewLabel" class="preview-label" aria-live="polite"></span>
+          <span id="previewFont" class="preview-font" aria-live="polite"></span>
           <span id="countLabel" class="count"></span>
         </div>
         <div class="preview-wrap" id="previewWrap">
@@ -55,36 +58,62 @@
 
         <div class="field">
           <label for="position">位置</label>
-          <select id="position"></select>
+          <sl-select id="position" hoist></sl-select>
         </div>
 
         <div class="field">
-          <label for="fontSearch">字体</label>
-          <input type="text" id="fontSearch" placeholder="搜索字体…" autocomplete="off" spellcheck="false" aria-describedby="fontHint">
-          <select id="font" size="6" aria-label="字体列表"></select>
-          <p id="fontHint" class="field-hint" aria-live="polite"></p>
+          <label>偏移 <span class="field-suffix">百分比</span></label>
+          <div class="offset-row">
+            <sl-range id="offsetX" min="-50" max="50" step="1" value="0" hoist>
+              <div slot="label" class="offset-label">左右 <span id="offsetXVal">0%</span></div>
+            </sl-range>
+          </div>
+          <div class="offset-row">
+            <sl-range id="offsetY" min="-50" max="50" step="1" value="0" hoist>
+              <div slot="label" class="offset-label">上下 <span id="offsetYVal">0%</span></div>
+            </sl-range>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>字体 <span class="field-suffix">可多选，批量时轮换</span></label>
+          <div class="font-multiselect" id="fontMultiselect">
+            <button type="button" class="font-trigger" id="fontTrigger" aria-haspopup="listbox" aria-expanded="false">
+              <span id="fontTriggerLabel">Helvetica</span>
+              <span class="font-trigger-arrow">▾</span>
+            </button>
+            <div class="font-panel" id="fontPanel" hidden>
+              <input type="text" id="fontSearch" class="font-search" placeholder="搜索字体…" autocomplete="off" spellcheck="false">
+              <div class="font-list" id="fontList"></div>
+              <div class="font-footer">
+                <span id="fontSelectedCount">已选 1 个</span>
+                <button type="button" id="fontClear" class="font-link-btn">清除</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="field">
           <label for="fontSize">字号 <span class="field-suffix">px，留空自动</span></label>
-          <input type="number" id="fontSize" min="8" placeholder="自动" autocomplete="off">
+          <sl-input id="fontSize" type="number" min="8" placeholder="自动"></sl-input>
         </div>
 
         <div class="field">
           <label for="color">颜色</label>
-          <input type="color" id="color" value="#ff7a1a">
+          <sl-color-picker id="color" value="#ff7a1a" format="hex" size="small"></sl-color-picker>
+          <span id="colorVal" class="color-val">#ff7a1a</span>
         </div>
 
         <div class="field">
           <label for="dateSource">日期来源</label>
-          <select id="dateSource">
-            <option value="auto">自动（EXIF → 文件时间）</option>
-            <option value="exif">仅 EXIF</option>
-            <option value="file">文件修改时间</option>
-          </select>
+          <sl-select id="dateSource" hoist>
+            <sl-option value="auto">自动（EXIF → 文件时间）</sl-option>
+            <sl-option value="exif">仅 EXIF</sl-option>
+            <sl-option value="file">文件修改时间</sl-option>
+          </sl-select>
         </div>
 
-        <button type="button" id="exportBtn" class="primary">批量导出下载</button>
+        <sl-button id="exportBtn" variant="primary" class="export-btn">批量导出下载</sl-button>
         <p id="status" class="status" aria-live="polite"></p>
       </aside>
     </div>

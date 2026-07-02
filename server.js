@@ -42,15 +42,19 @@ app.post('/api/preview', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: '缺少文件' });
     const opts = {
       font: req.body.font || DEFAULT_FONT,
+      fonts: req.body.fonts ? JSON.parse(req.body.fonts) : null,
       color: req.body.color || DEFAULT_COLOR,
       position: req.body.position || 'bottom-right',
       dateSource: req.body.dateSource || 'auto',
       fallbackDate: req.body.fileDate || null,
+      offsetX: Number(req.body.offsetX) || 0,
+      offsetY: Number(req.body.offsetY) || 0,
     };
     if (req.body.fontSize) opts.fontSize = Number(req.body.fontSize);
-    const { buffer, label } = await stampPreviewBuffer(req.file.buffer, req.file.originalname, opts);
+    const { buffer, label, font } = await stampPreviewBuffer(req.file.buffer, req.file.originalname, opts);
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('X-Stamp-Label', label);
+    res.setHeader('X-Stamp-Font', font);
     res.send(buffer);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -64,10 +68,13 @@ app.post('/api/stamp', upload.array('files', 100), async (req, res) => {
 
     const opts = {
       font: req.body.font || DEFAULT_FONT,
+      fonts: req.body.fonts ? JSON.parse(req.body.fonts) : null,
       color: req.body.color || DEFAULT_COLOR,
       position: req.body.position || 'bottom-right',
       dateSource: req.body.dateSource || 'auto',
       quality: Number(req.body.quality) || 100,
+      offsetX: Number(req.body.offsetX) || 0,
+      offsetY: Number(req.body.offsetY) || 0,
     };
     if (req.body.fontSize) opts.fontSize = Number(req.body.fontSize);
     if (req.body.padding) opts.padding = Number(req.body.padding);
@@ -90,10 +97,11 @@ app.post('/api/stamp', upload.array('files', 100), async (req, res) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       opts.fallbackDate = fileDates[i] || null;
+      opts.fontIndex = i;
       try {
-        const { buffer, outName, label } = await stampBuffer(file.buffer, file.originalname, opts);
+        const { buffer, outName, label, font } = await stampBuffer(file.buffer, file.originalname, opts);
         archive.append(buffer, { name: outName });
-        results.push({ name: file.originalname, ok: true, label, outName });
+        results.push({ name: file.originalname, ok: true, label, outName, font });
       } catch (e) {
         results.push({ name: file.originalname, ok: false, error: e.message });
       }

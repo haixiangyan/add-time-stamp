@@ -7,7 +7,9 @@
   },
   "scripts": {
     "start": "node index.js",
-    "web": "node server.js"
+    "web": "node server.js",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build"
   },
   "keywords": [
     "image",

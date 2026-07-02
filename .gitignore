@@ -1,3 +1,5 @@
 node_modules/
 dated/
 *.log
+web/.next/
+web/out/
