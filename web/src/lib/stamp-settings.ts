@@ -13,20 +13,18 @@ export const DATE_SOURCE_LABELS: Record<string, string> = {
   file: '文件修改时间',
 };
 
+// Kept in sync with the bundled fonts in web/src/lib/server/font-registry.ts
 export const DEFAULT_FONTS = [
-  'Helvetica',
   'Arial',
-  'Georgia',
   'Times New Roman',
   'Courier New',
-  'American Typewriter',
-  'Menlo',
-  'Monaco',
-  'PingFang SC',
-  'Songti SC',
+  'Roboto',
+  'Anton',
+  'Bebas Neue',
+  'DM Serif Display',
 ];
 
-export const DEFAULT_SELECTED_FONTS = ['Helvetica'];
+export const DEFAULT_SELECTED_FONTS = ['Arial'];
 export const DEFAULT_COLOR = '#ff7a1a';
 
 export interface ImageMeta {

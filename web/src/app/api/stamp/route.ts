@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { stampBuffer, DEFAULT_COLOR, DEFAULT_FONT, type StampOptions } from '@/lib/server/stamp';
 
 export const runtime = 'nodejs';
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = new ZipArchive({ zlib: { level: 6 } });
     const chunks: Buffer[] = [];
     archive.on('data', (c: Buffer) => chunks.push(c));
     const done = new Promise<void>((resolve, reject) => {

@@ -3,14 +3,17 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import sharp from 'sharp';
+import type { Sharp, Metadata } from 'sharp';
 import exifr from 'exifr';
+import { type Font } from 'opentype.js';
+import { loadFont, DEFAULT_FONT_NAME } from './font-registry';
 
 const execFileAsync = promisify(execFile);
 
 export const SUPPORTED = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif']);
 export const STAMP_SUFFIX = '-stamped';
 export const DEFAULT_COLOR = '#ff7a1a';
-export const DEFAULT_FONT = 'Helvetica';
+export const DEFAULT_FONT = DEFAULT_FONT_NAME;
 const REF_LONG_EDGE = 4800;
 const FONT_SIZE_RATIO = 130 / REF_LONG_EDGE;
 const PADDING_RATIO = 300 / REF_LONG_EDGE;
@@ -118,20 +121,6 @@ async function getDate(filePath: string, source: DateSource): Promise<Date | nul
   return st.mtime;
 }
 
-function escapeXml(s: string) {
-  return s.replace(/[<>&'"]/g, (c) =>
-    c === '<'
-      ? '&lt;'
-      : c === '>'
-        ? '&gt;'
-        : c === '&'
-          ? '&amp;'
-          : c === "'"
-            ? '&apos;'
-            : '&quot;',
-  );
-}
-
 function textAnchor(position: string) {
   if (position.endsWith('left')) return 'start';
   if (position.endsWith('center')) return 'middle';
@@ -202,23 +191,41 @@ function buildOverlaySvg(
     p.offsetY || 0,
   );
   const stroke = Math.max(1, Math.round(p.fontSize / 18));
-  const safe = escapeXml(text);
+
+  // Render the text to vector outlines with a bundled font so it looks
+  // identical everywhere (no dependency on OS-installed fonts).
+  const font = loadFont(p.font);
+  const { d, width } = layoutTextPath(font, text, p.fontSize, p.fontSize * 0.04);
+  const startX = anchor === 'end' ? x - width : anchor === 'middle' ? x - width / 2 : x;
+
   return Buffer.from(
     `<svg width="${imgW}" height="${imgH}" xmlns="http://www.w3.org/2000/svg">
-  <text x="${x}" y="${y}"
-    font-family="${p.font}" font-size="${p.fontSize}" font-weight="600"
-    text-anchor="${anchor}" letter-spacing="${p.fontSize * 0.04}"
-    fill="${p.color}" stroke="rgba(0,0,0,0.4)" stroke-width="${stroke}"
-    paint-order="stroke">${safe}</text>
+  <g transform="translate(${startX.toFixed(2)}, ${y.toFixed(2)})">
+    <path d="${d}" fill="${p.color}" stroke="rgba(0,0,0,0.4)" stroke-width="${stroke}" paint-order="stroke"/>
+  </g>
 </svg>`,
   );
 }
 
+/** Lay out text as a single SVG path (baseline at y=0, left origin at x=0). */
+function layoutTextPath(font: Font, text: string, fontSize: number, letterSpacing: number) {
+  const scale = fontSize / font.unitsPerEm;
+  let x = 0;
+  const parts: string[] = [];
+  for (const ch of text) {
+    const glyph = font.charToGlyph(ch);
+    const dd = glyph.getPath(x, 0, fontSize).toPathData(2);
+    if (dd) parts.push(dd);
+    x += (glyph.advanceWidth || 0) * scale + letterSpacing;
+  }
+  return { d: parts.join(' '), width: Math.max(0, x - letterSpacing) };
+}
+
 function applyEncoding(
-  pipeline: sharp.Sharp,
+  pipeline: Sharp,
   ext: string,
   quality: number,
-  meta: sharp.Metadata,
+  meta: Metadata,
 ) {
   switch (ext.toLowerCase()) {
     case '.jpg':
