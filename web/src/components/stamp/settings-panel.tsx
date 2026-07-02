@@ -30,6 +30,7 @@ interface SettingsPanelProps {
   exporting: boolean;
   status: string;
   count: number;
+  autoFontSize: number | null;
 }
 
 export function SettingsPanel({
@@ -41,6 +42,7 @@ export function SettingsPanel({
   exporting,
   status,
   count,
+  autoFontSize,
 }: SettingsPanelProps) {
   const set = <K extends keyof StampSettings>(key: K, value: StampSettings[K]) =>
     onChange({ ...settings, [key]: value });
@@ -120,13 +122,16 @@ export function SettingsPanel({
 
         <div className="space-y-2">
           <Label>
-            字号 <span className="text-xs font-normal text-muted-foreground">px，留空自动</span>
+            字号{' '}
+            <span className="text-xs font-normal text-muted-foreground">
+              px，{settings.fontSize ? '自定义' : '自动（清空恢复）'}
+            </span>
           </Label>
           <Input
             type="number"
             min={8}
             placeholder="自动"
-            value={settings.fontSize}
+            value={settings.fontSize !== '' ? settings.fontSize : (autoFontSize ?? '')}
             onChange={(e) => set('fontSize', e.target.value)}
           />
         </div>

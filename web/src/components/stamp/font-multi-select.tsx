@@ -5,7 +5,6 @@ import { Check, Search, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 interface FontMultiSelectProps {
@@ -64,7 +63,7 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
       </Button>
 
       {open && (
-        <div className="absolute z-50 mt-2 flex max-h-80 w-full flex-col rounded-md border bg-popover p-0 text-popover-foreground shadow-md">
+        <div className="absolute z-50 mt-2 flex w-full flex-col rounded-md border bg-popover p-0 text-popover-foreground shadow-md">
           <div className="border-b p-2">
             <div className="relative">
               <Search className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -77,7 +76,7 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
               />
             </div>
           </div>
-          <ScrollArea className="flex-1">
+          <div className="max-h-64 overflow-y-auto">
             <div className="p-1">
               {visible.map((f) => {
                 const checked = selectedSet.has(f);
@@ -114,7 +113,7 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
                 <p className="px-2 py-4 text-center text-sm text-muted-foreground">无匹配字体</p>
               )}
             </div>
-          </ScrollArea>
+          </div>
           <div className="flex items-center justify-between border-t p-2">
             <div className="flex flex-wrap gap-1">
               {selected.slice(0, 3).map((f) => (

@@ -352,6 +352,7 @@ export interface PreviewResult {
   buffer: Buffer;
   label: string;
   font: string;
+  fontSize: number;
 }
 
 export async function stampPreviewBuffer(
@@ -404,7 +405,7 @@ export async function stampPreviewBuffer(
     .composite([{ input: svg, top: 0, left: 0 }])
     .jpeg({ quality: 88 })
     .toBuffer();
-  return { buffer, label, font };
+  return { buffer, label, font, fontSize };
 }
 
 export async function processOne(filePath: string, opts: StampOptions) {

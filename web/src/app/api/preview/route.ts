@@ -29,12 +29,13 @@ export async function POST(req: Request) {
     if (fsStr) opts.fontSize = Number(fsStr);
 
     const buf = Buffer.from(await file.arrayBuffer());
-    const { buffer, label, font } = await stampPreviewBuffer(buf, file.name, opts);
+    const { buffer, label, font, fontSize } = await stampPreviewBuffer(buf, file.name, opts);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'image/jpeg',
         'X-Stamp-Label': label,
         'X-Stamp-Font': font,
+        'X-Stamp-Font-Size': String(fontSize),
       },
     });
   } catch (e) {

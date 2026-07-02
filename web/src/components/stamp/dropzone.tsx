@@ -3,13 +3,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Upload, ImageIcon, FolderOpen } from 'lucide-react';
+import { Upload, ImageIcon, FolderOpen, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { filterImageFiles } from '@/lib/stamp-settings';
 
 interface DropzoneProps {
   onFiles: (files: File[]) => void;
   compact?: boolean;
+  loading?: boolean;
 }
 
 // webkitdirectory isn't in React's input attribute types
@@ -18,7 +19,7 @@ const dirAttrs = { webkitdirectory: '', directory: '' } as unknown as Record<
   string
 >;
 
-export function Dropzone({ onFiles, compact }: DropzoneProps) {
+export function Dropzone({ onFiles, compact, loading }: DropzoneProps) {
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -59,6 +60,7 @@ export function Dropzone({ onFiles, compact }: DropzoneProps) {
         <Button
           variant="outline"
           size="sm"
+          disabled={loading}
           onClick={() => fileRef.current?.click()}
           className={cn(dragging && 'border-primary')}
           onDragOver={(e) => {
@@ -68,12 +70,17 @@ export function Dropzone({ onFiles, compact }: DropzoneProps) {
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
         >
-          <Upload className="size-4" />
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
           添加图片
         </Button>
-        <Button variant="outline" size="sm" onClick={() => folderRef.current?.click()}>
-          <FolderOpen className="size-4" />
-          选择文件夹
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          onClick={() => folderRef.current?.click()}
+        >
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
+          {loading ? '导入中…' : '选择文件夹'}
         </Button>
         {inputs}
       </>

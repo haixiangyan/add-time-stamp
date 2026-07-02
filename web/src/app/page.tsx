@@ -52,6 +52,7 @@ export default function Page() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLabel, setPreviewLabel] = useState('');
   const [previewFont, setPreviewFont] = useState('');
+  const [autoFontSize, setAutoFontSize] = useState<number | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -170,6 +171,8 @@ export default function Page() {
       });
       setPreviewLabel(res.headers.get('X-Stamp-Label') || '');
       setPreviewFont(res.headers.get('X-Stamp-Font') || '');
+      const fs = Number(res.headers.get('X-Stamp-Font-Size'));
+      setAutoFontSize(Number.isFinite(fs) && fs > 0 ? fs : null);
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       if (seq !== previewSeq.current) return;
@@ -238,6 +241,7 @@ export default function Page() {
   };
 
   const hasItems = items.length > 0;
+  const importing = items.some((i) => !i.meta);
 
   return (
     <div className="flex h-dvh flex-col">
@@ -253,7 +257,7 @@ export default function Page() {
         </div>
         {hasItems && (
           <div className="flex items-center gap-2">
-            <Dropzone onFiles={addFiles} compact />
+            <Dropzone onFiles={addFiles} compact loading={importing} />
             <Button variant="ghost" size="sm" onClick={clearAll}>
               <Trash2 className="size-4" />
               清空
@@ -289,6 +293,7 @@ export default function Page() {
                     selectedId={selectedId}
                     onSelect={setSelectedId}
                     onAdd={addFiles}
+                    loading={importing}
                   />
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -304,6 +309,7 @@ export default function Page() {
                 exporting={exporting}
                 status={status}
                 count={items.length}
+                autoFontSize={autoFontSize}
               />
             </ResizablePanel>
           </ResizablePanelGroup>
