@@ -9,6 +9,11 @@ import { MetaPanel } from '@/components/stamp/meta-panel';
 import { PreviewStage } from '@/components/stamp/preview-stage';
 import { SettingsPanel } from '@/components/stamp/settings-panel';
 import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable';
+import {
   DEFAULT_COLOR,
   DEFAULT_FONTS,
   DEFAULT_SELECTED_FONTS,
@@ -263,33 +268,33 @@ export default function Page() {
             <Dropzone onFiles={addFiles} />
           </div>
         ) : (
-          <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-            <div className="flex min-h-0 flex-col gap-3">
-              <PreviewStage
-                previewUrl={previewUrl}
-                label={previewLabel}
-                font={previewFont}
-                loading={previewLoading}
-                error={previewError}
-                empty={!selectedItem}
-              />
-              <div className="flex shrink-0 items-center justify-between">
-                <span className="text-sm font-medium">
-                  {items.length} <span className="text-muted-foreground">张</span>
-                </span>
-                <span className="text-xs text-muted-foreground">点击下方区域添加图片</span>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                <Filmstrip
-                  items={items}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onAdd={addFiles}
-                />
-                <MetaPanel item={selectedItem} />
-              </div>
-            </div>
-            <aside className="min-h-0">
+          <ResizablePanelGroup direction="horizontal" id="ts-main" className="h-full">
+            <ResizablePanel id="ts-left" defaultSize="74%" minSize="40%">
+              <ResizablePanelGroup direction="vertical" id="ts-left-col">
+                <ResizablePanel id="ts-preview" defaultSize="64%" minSize="30%">
+                  <PreviewStage
+                    previewUrl={previewUrl}
+                    label={previewLabel}
+                    font={previewFont}
+                    loading={previewLoading}
+                    error={previewError}
+                    empty={!selectedItem}
+                    overlay={<MetaPanel item={selectedItem} />}
+                  />
+                </ResizablePanel>
+                <ResizableHandle direction="vertical" withHandle />
+                <ResizablePanel id="ts-gallery" defaultSize="36%" minSize="15%">
+                  <Filmstrip
+                    items={items}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onAdd={addFiles}
+                  />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </ResizablePanel>
+            <ResizableHandle direction="horizontal" withHandle />
+            <ResizablePanel id="ts-settings" defaultSize="26%" minSize="18%" maxSize="45%">
               <SettingsPanel
                 fonts={fonts}
                 positions={positions}
@@ -300,8 +305,8 @@ export default function Page() {
                 status={status}
                 count={items.length}
               />
-            </aside>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
       </main>
     </div>

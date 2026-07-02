@@ -45,6 +45,9 @@ export function SettingsPanel({
   const set = <K extends keyof StampSettings>(key: K, value: StampSettings[K]) =>
     onChange({ ...settings, [key]: value });
 
+  // base-ui Slider passes a number for single-thumb sliders and an array otherwise
+  const firstNum = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
+
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
@@ -55,10 +58,12 @@ export function SettingsPanel({
           <Label>位置</Label>
           <Select
             value={settings.position}
-            onValueChange={(v) => set('position', v)}
+            onValueChange={(v) => v && set('position', v)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue>
+                {(v) => POSITION_LABELS[v as string] ?? (v as string)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {positions.map((p) => (
@@ -82,7 +87,7 @@ export function SettingsPanel({
               max={50}
               step={1}
               value={[settings.offsetX]}
-              onValueChange={(v) => set('offsetX', v[0])}
+              onValueChange={(v) => set('offsetX', firstNum(v))}
             />
           </div>
           <div className="space-y-1.5">
@@ -95,7 +100,7 @@ export function SettingsPanel({
               max={50}
               step={1}
               value={[settings.offsetY]}
-              onValueChange={(v) => set('offsetY', v[0])}
+              onValueChange={(v) => set('offsetY', firstNum(v))}
             />
           </div>
         </div>
@@ -147,10 +152,12 @@ export function SettingsPanel({
           <Label>日期来源</Label>
           <Select
             value={settings.dateSource}
-            onValueChange={(v) => set('dateSource', v)}
+            onValueChange={(v) => v && set('dateSource', v)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue>
+                {(v) => DATE_SOURCE_LABELS[v as string] ?? (v as string)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {Object.entries(DATE_SOURCE_LABELS).map(([k, v]) => (

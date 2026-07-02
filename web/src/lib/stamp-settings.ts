@@ -61,6 +61,12 @@ export interface ImageItem {
   meta: ImageMeta | null;
 }
 
+export function filterImageFiles(files: Iterable<File>): File[] {
+  return Array.from(files).filter(
+    (f) => /\.(jpe?g|png|webp|tiff?)$/i.test(f.name) || /^image\//.test(f.type),
+  );
+}
+
 export function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;

@@ -1,9 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBytes, type ImageItem } from '@/lib/stamp-settings';
 
@@ -39,34 +37,28 @@ export function MetaPanel({ item }: MetaPanelProps) {
   }
 
   return (
-    <Card className="flex min-h-0 flex-col overflow-hidden">
+    <div className="absolute left-3 top-3 z-20 max-w-[min(20rem,calc(100%-1.5rem))]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex shrink-0 items-center justify-between px-4 py-2"
+        className="flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/70"
       >
-        <span className="text-sm font-semibold">图片信息</span>
-        <ChevronDown
-          className={cn('size-4 transition-transform', open && 'rotate-180')}
-        />
+        <Info className="size-3.5" />
+        图片信息
+        <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
-        <CardContent className="min-h-0 max-h-48 overflow-y-auto pt-0">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+        <div className="mt-1.5 max-h-[min(60vh,20rem)] overflow-y-auto rounded-md bg-black/60 p-3 text-white backdrop-blur-sm">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
             {rows.map(([k, v], i) => (
               <div key={i} className="contents">
-                <dt className="text-muted-foreground">{k}</dt>
+                <dt className="text-white/60">{k}</dt>
                 <dd className="break-all font-mono">{v}</dd>
               </div>
             ))}
           </dl>
-          {item.meta?.stampDate && (
-            <Badge className="mt-3" variant="default">
-              {item.meta.stampDate}
-            </Badge>
-          )}
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }

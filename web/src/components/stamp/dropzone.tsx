@@ -1,37 +1,57 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Upload, ImageIcon } from 'lucide-react';
+import { Upload, ImageIcon, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { filterImageFiles } from '@/lib/stamp-settings';
 
 interface DropzoneProps {
   onFiles: (files: File[]) => void;
   compact?: boolean;
 }
 
+// webkitdirectory isn't in React's input attribute types
+const dirAttrs = { webkitdirectory: '', directory: '' } as unknown as Record<
+  string,
+  string
+>;
+
 export function Dropzone({ onFiles, compact }: DropzoneProps) {
   const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const files = Array.from(e.dataTransfer.files).filter(
-        (f) => /\.(jpe?g|png|webp|tiff?)$/i.test(f.name) || /^image\//.test(f.type),
-      );
+      const files = filterImageFiles(e.dataTransfer.files);
       if (files.length) onFiles(files);
     },
     [onFiles],
   );
 
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const files = filterImageFiles(e.target.files ?? []);
     if (files.length) onFiles(files);
     e.target.value = '';
   };
+
+  const inputs = (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff"
+        hidden
+        onChange={handlePick}
+      />
+      <input ref={folderRef} type="file" multiple hidden onChange={handlePick} {...dirAttrs} />
+    </>
+  );
 
   if (compact) {
     return (
@@ -39,7 +59,7 @@ export function Dropzone({ onFiles, compact }: DropzoneProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => fileRef.current?.click()}
           className={cn(dragging && 'border-primary')}
           onDragOver={(e) => {
             e.preventDefault();
@@ -51,14 +71,11 @@ export function Dropzone({ onFiles, compact }: DropzoneProps) {
           <Upload className="size-4" />
           添加图片
         </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff"
-          hidden
-          onChange={handlePick}
-        />
+        <Button variant="outline" size="sm" onClick={() => folderRef.current?.click()}>
+          <FolderOpen className="size-4" />
+          选择文件夹
+        </Button>
+        {inputs}
       </>
     );
   }
@@ -80,27 +97,28 @@ export function Dropzone({ onFiles, compact }: DropzoneProps) {
         <ImageIcon className="size-7" />
       </div>
       <div className="space-y-1">
-        <p className="text-base font-medium">拖拽图片到此处</p>
+        <p className="text-base font-medium">拖拽图片或文件夹到此处</p>
         <p className="text-sm text-muted-foreground">
           或{' '}
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={() => fileRef.current?.click()}
             className="text-primary underline-offset-4 hover:underline"
           >
             选择文件
+          </button>{' '}
+          /{' '}
+          <button
+            type="button"
+            onClick={() => folderRef.current?.click()}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            选择文件夹
           </button>
         </p>
-        <p className="text-xs text-muted-foreground">支持 JPG / PNG / WebP / TIFF，可多选</p>
+        <p className="text-xs text-muted-foreground">支持 JPG / PNG / WebP / TIFF，可多选或整个文件夹导入</p>
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff"
-        hidden
-        onChange={handlePick}
-      />
+      {inputs}
     </Card>
   );
 }

@@ -12,6 +12,7 @@ interface PreviewStageProps {
   loading: boolean;
   error: string | null;
   empty: boolean;
+  overlay?: React.ReactNode;
 }
 
 export function PreviewStage({
@@ -21,9 +22,12 @@ export function PreviewStage({
   loading,
   error,
   empty,
+  overlay,
 }: PreviewStageProps) {
   return (
-    <Card className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/30 p-0">
+    <Card className="relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-muted/30 p-0">
+      {overlay}
+
       {loading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 backdrop-blur-sm">
           <Loader2 className="size-8 animate-spin text-primary" />
