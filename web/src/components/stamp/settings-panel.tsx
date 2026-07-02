@@ -15,6 +15,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { FontMultiSelect } from './font-multi-select';
 import { Download, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   DATE_SOURCE_LABELS,
   POSITION_LABELS,
@@ -31,6 +32,10 @@ interface SettingsPanelProps {
   status: string;
   count: number;
   autoFontSize: number | null;
+  /** Hide the built-in card header (e.g. when a drawer already shows the title). */
+  hideHeader?: boolean;
+  /** Extra classes for the outer card — used to flatten it inside a drawer. */
+  className?: string;
 }
 
 export function SettingsPanel({
@@ -43,6 +48,8 @@ export function SettingsPanel({
   status,
   count,
   autoFontSize,
+  hideHeader,
+  className,
 }: SettingsPanelProps) {
   const set = <K extends keyof StampSettings>(key: K, value: StampSettings[K]) =>
     onChange({ ...settings, [key]: value });
@@ -51,10 +58,12 @@ export function SettingsPanel({
   const firstNum = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
 
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader>
-        <CardTitle className="text-base">水印设置</CardTitle>
-      </CardHeader>
+    <Card className={cn('flex h-full flex-col', className)}>
+      {!hideHeader && (
+        <CardHeader>
+          <CardTitle className="text-base">水印设置</CardTitle>
+        </CardHeader>
+      )}
       <CardContent className="flex flex-1 flex-col gap-5 overflow-y-auto">
         <div className="space-y-2">
           <Label>位置</Label>

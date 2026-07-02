@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Trash2, Clock } from 'lucide-react';
+import { Trash2, Clock, SlidersHorizontal } from 'lucide-react';
 import { Dropzone } from '@/components/stamp/dropzone';
 import { Filmstrip } from '@/components/stamp/filmstrip';
 import { MetaPanel } from '@/components/stamp/meta-panel';
@@ -13,6 +13,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
+import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import {
   DEFAULT_COLOR,
   DEFAULT_FONTS,
@@ -58,6 +59,7 @@ export default function Page() {
 
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
@@ -247,17 +249,30 @@ export default function Page() {
     <div className="flex h-dvh flex-col">
       <header className="flex shrink-0 items-center justify-between border-b bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="flex items-center gap-2.5">
+          {hasItems && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="lg:hidden"
+              aria-label="水印设置"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <SlidersHorizontal className="size-4" />
+            </Button>
+          )}
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Clock className="size-4" />
           </div>
           <div>
             <h1 className="text-base font-semibold leading-none">Time Stamp</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">批量给照片加怀旧日期水印</p>
+            <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">批量给照片加怀旧日期水印</p>
           </div>
         </div>
         {hasItems && (
           <div className="flex items-center gap-2">
-            <Dropzone onFiles={addFiles} compact loading={importing} />
+            <div className="hidden items-center gap-2 sm:flex">
+              <Dropzone onFiles={addFiles} compact loading={importing} />
+            </div>
             <Button variant="ghost" size="sm" onClick={clearAll}>
               <Trash2 className="size-4" />
               清空
@@ -272,47 +287,99 @@ export default function Page() {
             <Dropzone onFiles={addFiles} />
           </div>
         ) : (
-          <ResizablePanelGroup direction="horizontal" id="ts-main" className="h-full">
-            <ResizablePanel id="ts-left" defaultSize="74%" minSize="40%">
-              <ResizablePanelGroup direction="vertical" id="ts-left-col">
-                <ResizablePanel id="ts-preview" defaultSize="64%" minSize="30%">
-                  <PreviewStage
-                    previewUrl={previewUrl}
-                    label={previewLabel}
-                    font={previewFont}
-                    loading={previewLoading}
-                    error={previewError}
-                    empty={!selectedItem}
-                    overlay={<MetaPanel item={selectedItem} />}
+          <>
+            {/* Desktop: resizable three-pane layout.
+                Wrapped in a plain div because ResizablePanelGroup forces an
+                inline `display:flex`, which would override a `hidden` class. */}
+            <div className="hidden h-full lg:block">
+            <ResizablePanelGroup
+              direction="horizontal"
+              id="ts-main"
+              className="h-full"
+            >
+              <ResizablePanel id="ts-left" defaultSize="74%" minSize="40%">
+                <ResizablePanelGroup direction="vertical" id="ts-left-col">
+                  <ResizablePanel id="ts-preview" defaultSize="64%" minSize="30%">
+                    <PreviewStage
+                      previewUrl={previewUrl}
+                      label={previewLabel}
+                      font={previewFont}
+                      loading={previewLoading}
+                      error={previewError}
+                      empty={!selectedItem}
+                      overlay={<MetaPanel item={selectedItem} />}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle direction="vertical" withHandle />
+                  <ResizablePanel id="ts-gallery" defaultSize="36%" minSize="15%">
+                    <Filmstrip
+                      items={items}
+                      selectedId={selectedId}
+                      onSelect={setSelectedId}
+                      onAdd={addFiles}
+                      loading={importing}
+                    />
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </ResizablePanel>
+              <ResizableHandle direction="horizontal" withHandle />
+              <ResizablePanel id="ts-settings" defaultSize="26%" minSize="18%" maxSize="45%">
+                <SettingsPanel
+                  fonts={fonts}
+                  positions={positions}
+                  settings={settings}
+                  onChange={setSettings}
+                  onExport={exportZip}
+                  exporting={exporting}
+                  status={status}
+                  count={items.length}
+                  autoFontSize={autoFontSize}
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+            </div>
+
+            {/* Mobile: preview on top, gallery below, settings in a drawer */}
+            <div className="flex h-full flex-col gap-3 lg:hidden">
+              <div className="min-h-0 flex-1">
+                <PreviewStage
+                  previewUrl={previewUrl}
+                  label={previewLabel}
+                  font={previewFont}
+                  loading={previewLoading}
+                  error={previewError}
+                  empty={!selectedItem}
+                  overlay={<MetaPanel item={selectedItem} />}
+                />
+              </div>
+              <div className="h-40 shrink-0">
+                <Filmstrip
+                  items={items}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onAdd={addFiles}
+                  loading={importing}
+                />
+              </div>
+              <Drawer open={settingsOpen} onOpenChange={setSettingsOpen} swipeDirection="left">
+                <DrawerContent side="left" title="水印设置">
+                  <SettingsPanel
+                    hideHeader
+                    className="h-auto rounded-none bg-transparent ring-0"
+                    fonts={fonts}
+                    positions={positions}
+                    settings={settings}
+                    onChange={setSettings}
+                    onExport={exportZip}
+                    exporting={exporting}
+                    status={status}
+                    count={items.length}
+                    autoFontSize={autoFontSize}
                   />
-                </ResizablePanel>
-                <ResizableHandle direction="vertical" withHandle />
-                <ResizablePanel id="ts-gallery" defaultSize="36%" minSize="15%">
-                  <Filmstrip
-                    items={items}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                    onAdd={addFiles}
-                    loading={importing}
-                  />
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </ResizablePanel>
-            <ResizableHandle direction="horizontal" withHandle />
-            <ResizablePanel id="ts-settings" defaultSize="26%" minSize="18%" maxSize="45%">
-              <SettingsPanel
-                fonts={fonts}
-                positions={positions}
-                settings={settings}
-                onChange={setSettings}
-                onExport={exportZip}
-                exporting={exporting}
-                status={status}
-                count={items.length}
-                autoFontSize={autoFontSize}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+                </DrawerContent>
+              </Drawer>
+            </div>
+          </>
         )}
       </main>
     </div>
