@@ -224,8 +224,7 @@ export default function Page() {
     };
 
     try {
-      const single = items.length === 1;
-      const entries: Record<string, Uint8Array> = {};
+      const rendered: { name: string; blob: Blob }[] = [];
       const results: { name: string; ok: boolean; label?: string; outName?: string; error?: string }[] = [];
 
       for (let i = 0; i < items.length; i++) {
@@ -239,24 +238,46 @@ export default function Page() {
         // Render full-resolution in the browser — no upload, no size limit.
         const { blob } = await stampImage(item.file, label, { ...opts, fontIndex: i });
         const outName = stampedName(item.file.name);
-        if (single) {
-          downloadBlob(blob, outName);
-          setStatus(`已下载 ${outName}`);
-          return;
-        }
-        entries[outName] = new Uint8Array(await blob.arrayBuffer());
+        rendered.push({ name: outName, blob });
         results.push({ name: item.file.name, ok: true, label, outName });
       }
 
-      const okCount = results.filter((r) => r.ok).length;
-      if (!okCount) throw new Error(results[0]?.error || '没有可导出的图片');
+      if (!rendered.length) throw new Error(results[0]?.error || '没有可导出的图片');
 
+      // On touch devices (iOS/Android), hand the images to the native share
+      // sheet so they can be saved straight to the photo library. A plain
+      // download would only land in Files.
+      const files = rendered.map((r) => new File([r.blob], r.name, { type: r.blob.type }));
+      const coarsePointer =
+        typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+      if (coarsePointer && typeof navigator !== 'undefined' && navigator.canShare?.({ files })) {
+        try {
+          await navigator.share({ files });
+          setStatus(`已分享 ${files.length} 张，可存到图库`);
+          return;
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') {
+            setStatus('已取消');
+            return;
+          }
+          // otherwise fall through to a normal download
+        }
+      }
+
+      if (rendered.length === 1) {
+        downloadBlob(rendered[0].blob, rendered[0].name);
+        setStatus(`已下载 ${rendered[0].name}`);
+        return;
+      }
+
+      const entries: Record<string, Uint8Array> = {};
+      for (const r of rendered) entries[r.name] = new Uint8Array(await r.blob.arrayBuffer());
       entries['_manifest.json'] = strToU8(JSON.stringify(results, null, 2));
       const data = await new Promise<Uint8Array>((resolve, reject) =>
         zip(entries, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out))),
       );
       downloadBlob(new Blob([data as BlobPart], { type: 'application/zip' }), 'time-stamp-export.zip');
-      setStatus(`已下载 time-stamp-export.zip（${okCount}/${items.length}）`);
+      setStatus(`已下载 time-stamp-export.zip（${rendered.length}/${items.length}）`);
     } catch (e) {
       setStatus(`失败: ${(e as Error).message}`);
     } finally {
