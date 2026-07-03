@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/resizable';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { PREVIEW_MAX_EDGE, resolveStampLabel } from '@/lib/client/preview';
+import { readImageMeta } from '@/lib/client/metadata';
 import { stampImage, stampedName } from '@/lib/client/render';
 import { zip, strToU8 } from 'fflate';
 import {
@@ -22,7 +23,6 @@ import {
   DEFAULT_FONTS,
   DEFAULT_SELECTED_FONTS,
   type ImageItem,
-  type ImageMeta,
   type StampSettings,
 } from '@/lib/stamp-settings';
 
@@ -113,12 +113,8 @@ export default function Page() {
   }, [items, selectedId]);
 
   const loadMeta = async (id: string, file: File) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('fileDate', new Date(file.lastModified).toISOString());
     try {
-      const res = await fetch('/api/metadata', { method: 'POST', body: fd });
-      const meta: ImageMeta = await res.json();
+      const meta = await readImageMeta(file);
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, meta } : i)));
     } catch {
       setItems((prev) =>
