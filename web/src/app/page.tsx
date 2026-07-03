@@ -14,6 +14,7 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
+import { makePreviewBlob, resolveDateIso } from '@/lib/client/preview';
 import {
   DEFAULT_COLOR,
   DEFAULT_FONTS,
@@ -64,6 +65,9 @@ export default function Page() {
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
+  // Downscaled preview upload per image — depends only on the source image, so
+  // it's reused across settings changes to keep every preview fast.
+  const previewBlobCache = useRef<Map<string, Blob>>(new Map());
 
   useEffect(() => {
     fetch('/api/positions')
@@ -147,14 +151,36 @@ export default function Page() {
     setPreviewLoading(true);
     setPreviewError(null);
 
-    const fd = new FormData();
-    fd.append('file', item.file);
-    fd.append('fileDate', new Date(item.file.lastModified).toISOString());
     const s = settings;
+    // Upload a browser-downscaled copy so the server isn't re-decoding a
+    // multi-MB photo on every keystroke. The stripped copy has no EXIF, so the
+    // date is resolved on the client and sent as an explicit fallback.
+    let uploadFile: Blob = item.file;
+    let uploadName = item.file.name;
+    let dateSource = s.dateSource;
+    let fileDate = new Date(item.file.lastModified).toISOString();
+    try {
+      let blob = previewBlobCache.current.get(item.id);
+      if (!blob) {
+        blob = await makePreviewBlob(item.file);
+        previewBlobCache.current.set(item.id, blob);
+      }
+      if (seq !== previewSeq.current) return;
+      uploadFile = blob;
+      uploadName = 'preview.jpg';
+      dateSource = 'file';
+      fileDate = resolveDateIso(item, s.dateSource) ?? '';
+    } catch {
+      /* fall back to uploading the original; server resolves the date */
+    }
+
+    const fd = new FormData();
+    fd.append('file', uploadFile, uploadName);
+    fd.append('fileDate', fileDate);
     fd.append('fonts', JSON.stringify(s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS));
     fd.append('color', s.color);
     fd.append('position', s.position);
-    fd.append('dateSource', s.dateSource);
+    fd.append('dateSource', dateSource);
     if (s.fontSize) fd.append('fontSize', s.fontSize);
     fd.append('offsetX', String(s.offsetX));
     fd.append('offsetY', String(s.offsetY));
@@ -194,6 +220,7 @@ export default function Page() {
   const clearAll = () => {
     for (const i of items) URL.revokeObjectURL(i.url);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewBlobCache.current.clear();
     setItems([]);
     setSelectedId(null);
     setPreviewUrl(null);
@@ -249,17 +276,15 @@ export default function Page() {
     <div className="flex h-dvh flex-col">
       <header className="flex shrink-0 items-center justify-between border-b bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="flex items-center gap-2.5">
-          {hasItems && (
-            <Button
-              variant="outline"
-              size="icon"
-              className="lg:hidden"
-              aria-label="水印设置"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <SlidersHorizontal className="size-4" />
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="lg:hidden"
+            aria-label="水印设置"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SlidersHorizontal className="size-4" />
+          </Button>
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Clock className="size-4" />
           </div>
@@ -361,27 +386,30 @@ export default function Page() {
                   loading={importing}
                 />
               </div>
-              <Drawer open={settingsOpen} onOpenChange={setSettingsOpen} swipeDirection="left">
-                <DrawerContent side="left" title="水印设置">
-                  <SettingsPanel
-                    hideHeader
-                    className="h-auto rounded-none bg-transparent ring-0"
-                    fonts={fonts}
-                    positions={positions}
-                    settings={settings}
-                    onChange={setSettings}
-                    onExport={exportZip}
-                    exporting={exporting}
-                    status={status}
-                    count={items.length}
-                    autoFontSize={autoFontSize}
-                  />
-                </DrawerContent>
-              </Drawer>
             </div>
           </>
         )}
       </main>
+
+      {/* Settings drawer (mobile). Mounted regardless of whether images are
+          loaded so the top-left trigger always works. */}
+      <Drawer open={settingsOpen} onOpenChange={setSettingsOpen} swipeDirection="left">
+        <DrawerContent side="left" title="水印设置">
+          <SettingsPanel
+            hideHeader
+            className="h-auto rounded-none bg-transparent ring-0"
+            fonts={fonts}
+            positions={positions}
+            settings={settings}
+            onChange={setSettings}
+            onExport={exportZip}
+            exporting={exporting}
+            status={status}
+            count={items.length}
+            autoFontSize={autoFontSize}
+          />
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }
