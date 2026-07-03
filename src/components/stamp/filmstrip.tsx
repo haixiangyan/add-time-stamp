@@ -153,7 +153,7 @@ export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: Films
         ref={inputRef}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff"
+        accept="image/jpeg,image/png,image/webp,image/tiff,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.tif,.tiff,.heic,.heif"
         hidden
         onChange={handlePick}
       />

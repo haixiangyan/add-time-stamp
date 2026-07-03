@@ -17,7 +17,8 @@ import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { PREVIEW_MAX_EDGE, resolveStampLabel } from '@/lib/client/preview';
 import { readImageMeta } from '@/lib/client/metadata';
 import { stampImage, stampedName } from '@/lib/client/render';
-import { zip, strToU8 } from 'fflate';
+import { isHeif, heifThumbnailBlob } from '@/lib/client/heif';
+import { zip } from 'fflate';
 import {
   DEFAULT_COLOR,
   DEFAULT_FONTS,
@@ -71,6 +72,8 @@ export default function Page() {
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Rendered files awaiting the native share sheet (mobile "save to Photos").
+  const [shareFiles, setShareFiles] = useState<File[] | null>(null);
 
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
@@ -113,6 +116,22 @@ export default function Page() {
   }, [items, selectedId]);
 
   const loadMeta = async (id: string, file: File) => {
+    // HEIC can't render via a raw object URL outside Safari — decode a JPEG
+    // thumbnail so the filmstrip/preview show something.
+    if (isHeif(file)) {
+      heifThumbnailBlob(file, PREVIEW_MAX_EDGE)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          setItems((prev) =>
+            prev.map((i) => {
+              if (i.id !== id) return i;
+              URL.revokeObjectURL(i.url);
+              return { ...i, url };
+            }),
+          );
+        })
+        .catch(() => {});
+    }
     try {
       const meta = await readImageMeta(file);
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, meta } : i)));
@@ -209,10 +228,31 @@ export default function Page() {
     setStatus('');
   };
 
+  const canShareFiles =
+    typeof navigator !== 'undefined' &&
+    typeof matchMedia !== 'undefined' &&
+    matchMedia('(pointer: coarse)').matches;
+
+  const downloadFiles = async (files: File[]) => {
+    if (files.length === 1) {
+      downloadBlob(files[0], files[0].name);
+      setStatus(`已下载 ${files[0].name}`);
+      return;
+    }
+    const entries: Record<string, Uint8Array> = {};
+    for (const f of files) entries[f.name] = new Uint8Array(await f.arrayBuffer());
+    const data = await new Promise<Uint8Array>((resolve, reject) =>
+      zip(entries, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out))),
+    );
+    downloadBlob(new Blob([data as BlobPart], { type: 'application/zip' }), 'time-stamp-export.zip');
+    setStatus(`已下载 time-stamp-export.zip（${files.length}）`);
+  };
+
   const exportZip = async () => {
     if (!items.length) return;
     setExporting(true);
     setStatus('处理中…');
+    setShareFiles(null);
     const s = settings;
     const opts = {
       fonts: s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS,
@@ -225,66 +265,57 @@ export default function Page() {
     };
 
     try {
-      const rendered: { name: string; blob: Blob }[] = [];
-      const results: { name: string; ok: boolean; label?: string; outName?: string; error?: string }[] = [];
-
+      const files: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const label = resolveStampLabel(item, s.dateSource);
-        if (!label) {
-          results.push({ name: item.file.name, ok: false, error: '无法获取日期' });
-          continue;
-        }
+        if (!label) continue;
         setStatus(`处理中… ${i + 1}/${items.length}`);
         // Render full-resolution in the browser — no upload, no size limit.
         const { blob } = await stampImage(item.file, label, { ...opts, fontIndex: i });
-        const outName = stampedName(item.file.name);
-        rendered.push({ name: outName, blob });
-        results.push({ name: item.file.name, ok: true, label, outName });
+        // HEIC/HEIF are re-encoded to JPEG on export — reflect that in the name.
+        const name = stampedName(item.file.name).replace(/\.(heic|heif)$/i, '.jpg');
+        files.push(new File([blob], name, { type: blob.type }));
       }
 
-      if (!rendered.length) throw new Error(results[0]?.error || '没有可导出的图片');
+      if (!files.length) throw new Error('没有可导出的图片（无法获取日期）');
 
-      // On touch devices (iOS/Android), hand the images to the native share
-      // sheet so they can be saved straight to the photo library. A plain
-      // download would only land in Files.
-      const files = rendered.map((r) => new File([r.blob], r.name, { type: r.blob.type }));
-      const coarsePointer =
-        typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
-      if (coarsePointer && typeof navigator !== 'undefined' && navigator.canShare?.({ files })) {
-        try {
-          await navigator.share({ files });
-          setStatus(`已分享 ${files.length} 张，可存到图库`);
-          return;
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') {
-            setStatus('已取消');
-            return;
-          }
-          // otherwise fall through to a normal download
-        }
-      }
-
-      if (rendered.length === 1) {
-        downloadBlob(rendered[0].blob, rendered[0].name);
-        setStatus(`已下载 ${rendered[0].name}`);
+      // On touch devices the native share sheet can save straight to Photos,
+      // but it must fire from a fresh user tap — so stash the files and show a
+      // "保存到相册" button instead of sharing here (encoding took too long to
+      // still count as the export tap's activation).
+      if (canShareFiles && navigator.canShare?.({ files })) {
+        setShareFiles(files);
+        setStatus(`已生成 ${files.length} 张，点“保存到相册”`);
         return;
       }
 
-      const entries: Record<string, Uint8Array> = {};
-      for (const r of rendered) entries[r.name] = new Uint8Array(await r.blob.arrayBuffer());
-      entries['_manifest.json'] = strToU8(JSON.stringify(results, null, 2));
-      const data = await new Promise<Uint8Array>((resolve, reject) =>
-        zip(entries, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out))),
-      );
-      downloadBlob(new Blob([data as BlobPart], { type: 'application/zip' }), 'time-stamp-export.zip');
-      setStatus(`已下载 time-stamp-export.zip（${rendered.length}/${items.length}）`);
+      await downloadFiles(files);
     } catch (e) {
       setStatus(`失败: ${(e as Error).message}`);
     } finally {
       setExporting(false);
     }
   };
+
+  const shareToPhotos = async () => {
+    if (!shareFiles) return;
+    try {
+      await navigator.share({ files: shareFiles });
+      setStatus(`已保存 ${shareFiles.length} 张到相册`);
+      setShareFiles(null);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return; // cancelled — keep the button
+      // Sharing failed for another reason — fall back to a download.
+      await downloadFiles(shareFiles).catch(() => setStatus('保存失败'));
+      setShareFiles(null);
+    }
+  };
+
+  // Any settings/library change invalidates already-rendered files.
+  useEffect(() => {
+    setShareFiles(null);
+  }, [settings, items.length]);
 
   const hasItems = items.length > 0;
   const importing = items.some((i) => !i.meta);
@@ -376,6 +407,8 @@ export default function Page() {
                   status={status}
                   count={items.length}
                   autoFontSize={autoFontSize}
+                  shareReady={!!shareFiles}
+                  onShare={shareToPhotos}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -424,6 +457,8 @@ export default function Page() {
             status={status}
             count={items.length}
             autoFontSize={autoFontSize}
+            shareReady={!!shareFiles}
+            onShare={shareToPhotos}
           />
         </DrawerContent>
       </Drawer>

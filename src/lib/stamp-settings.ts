@@ -61,7 +61,7 @@ export interface ImageItem {
 
 export function filterImageFiles(files: Iterable<File>): File[] {
   return Array.from(files).filter(
-    (f) => /\.(jpe?g|png|webp|tiff?)$/i.test(f.name) || /^image\//.test(f.type),
+    (f) => /\.(jpe?g|png|webp|tiff?|heic|heif)$/i.test(f.name) || /^image\//.test(f.type),
   );
 }
 

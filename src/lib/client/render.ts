@@ -4,7 +4,8 @@
 // The geometry mirrors the server renderer in lib/server/stamp.ts.
 
 import { preserveExif } from './exif';
-import { encodeHiFiJpeg } from './encode';
+import { encodeHiFiJpeg, assembleJpeg } from './encode';
+import { isHeif, decodeHeif, heifExifApp1 } from './heif';
 
 const FONT_FILES: Record<string, string> = {
   Arial: 'Arimo-Bold.ttf',
@@ -114,13 +115,18 @@ export async function stampImage(
   opts: StampRenderOpts,
 ): Promise<StampRenderResult> {
   const font = pickFont(opts);
+  const heif = isHeif(file);
   const [bitmap] = await Promise.all([
-    // keepExif (export): don't let the browser convert wide-gamut pixels to
-    // sRGB — we keep the raw values and re-attach the original ICC profile.
-    createImageBitmap(file, {
-      imageOrientation: 'from-image',
-      colorSpaceConversion: opts.keepExif ? 'none' : 'default',
-    }),
+    heif
+      ? // HEIC/HEIF: decode with libheif (browsers can't via createImageBitmap),
+        // then wrap the RGBA into a bitmap so the rest of the path is unchanged.
+        decodeHeif(file).then((data) => createImageBitmap(data))
+      : // keepExif (export): don't let the browser convert wide-gamut pixels to
+        // sRGB — we keep the raw values and re-attach the original ICC profile.
+        createImageBitmap(file, {
+          imageOrientation: 'from-image',
+          colorSpaceConversion: opts.keepExif ? 'none' : 'default',
+        }),
     ensureFont(font),
   ]);
   try {
@@ -168,6 +174,26 @@ export async function stampImage(
 
     const mime = outputMime(file.name);
     const isJpeg = mime === 'image/jpeg' && /\.jpe?g$/i.test(file.name);
+
+    // HEIC/HEIF export: browsers can't encode HEIC, so output a high-quality
+    // JPEG, carrying over the original EXIF (capture time / GPS) from the
+    // container. Only add the watermark; everything else is preserved as best a
+    // format change allows.
+    if (opts.keepExif && heif) {
+      try {
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const origBytes = new Uint8Array(await file.arrayBuffer());
+        const blob = await assembleJpeg(imageData, {
+          chromaSubsample: 2,
+          progressive: true,
+          app1: heifExifApp1(origBytes, w, h),
+          icc: [],
+        });
+        return { blob, fontSize, font };
+      } catch {
+        /* codec unavailable — fall back to canvas encode below */
+      }
+    }
 
     // High-fidelity JPEG export: re-encode with mozjpeg matching the source's
     // chroma subsampling + ICC + EXIF, so only the watermark changes.

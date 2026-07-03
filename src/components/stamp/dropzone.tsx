@@ -46,7 +46,7 @@ export function Dropzone({ onFiles, compact, loading }: DropzoneProps) {
         ref={fileRef}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp,image/tiff,.jpg,.jpeg,.png,.webp,.tif,.tiff"
+        accept="image/jpeg,image/png,image/webp,image/tiff,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.tif,.tiff,.heic,.heif"
         hidden
         onChange={handlePick}
       />
@@ -123,7 +123,7 @@ export function Dropzone({ onFiles, compact, loading }: DropzoneProps) {
             选择文件夹
           </button>
         </p>
-        <p className="text-xs text-muted-foreground">支持 JPG / PNG / WebP / TIFF，可多选或整个文件夹导入</p>
+        <p className="text-xs text-muted-foreground">支持 JPG / PNG / WebP / TIFF / HEIC，可多选或整个文件夹导入</p>
       </div>
       {inputs}
     </Card>

@@ -31,7 +31,7 @@ function u8ToBin(u8: Uint8Array): string {
 
 // Build the APP1 (EXIF) segment from the original, with orientation reset to
 // normal (pixels are already baked upright) and dimensions updated.
-function buildExifApp1(headBytes: Uint8Array, w: number, h: number): Uint8Array | null {
+export function buildExifApp1(headBytes: Uint8Array, w: number, h: number): Uint8Array | null {
   try {
     const exifObj = piexif.load(u8ToBin(headBytes));
     if (exifObj['0th']) exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
@@ -68,10 +68,29 @@ export async function encodeHiFiJpeg(
   width: number,
   height: number,
 ): Promise<Blob> {
-  await ensureEncoder();
   const origBytes = new Uint8Array(await originalFile.arrayBuffer());
   const { chromaSubsample, progressive } = readJpegFormat(origBytes);
+  return assembleJpeg(imageData, {
+    chromaSubsample,
+    progressive,
+    app1: buildExifApp1(origBytes.subarray(0, 256 * 1024), width, height),
+    icc: readIccSegments(origBytes),
+  });
+}
 
+interface JpegAssembleOpts {
+  chromaSubsample: 1 | 2;
+  progressive: boolean;
+  app1: Uint8Array | null;
+  icc: Uint8Array[];
+}
+
+/** Encode RGBA pixels with mozjpeg and splice in the given EXIF (APP1) + ICC segments. */
+export async function assembleJpeg(
+  imageData: ImageData,
+  { chromaSubsample, progressive, app1, icc }: JpegAssembleOpts,
+): Promise<Blob> {
+  await ensureEncoder();
   const encoded = new Uint8Array(
     await encode(imageData, {
       quality: 95,
@@ -80,9 +99,6 @@ export async function encodeHiFiJpeg(
       chroma_subsample: chromaSubsample,
     }),
   );
-
-  const app1 = buildExifApp1(origBytes.subarray(0, 256 * 1024), width, height);
-  const icc = readIccSegments(origBytes);
 
   const parts: Uint8Array[] = [encoded.subarray(0, 2)]; // SOI
   if (app1) parts.push(app1);

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { FontMultiSelect } from './font-multi-select';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Loader2, ImageDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DATE_SOURCE_LABELS,
@@ -36,6 +36,9 @@ interface SettingsPanelProps {
   hideHeader?: boolean;
   /** Extra classes for the outer card — used to flatten it inside a drawer. */
   className?: string;
+  /** Rendered files are ready to be saved to the photo library (mobile). */
+  shareReady?: boolean;
+  onShare?: () => void;
 }
 
 export function SettingsPanel({
@@ -50,6 +53,8 @@ export function SettingsPanel({
   autoFontSize,
   hideHeader,
   className,
+  shareReady,
+  onShare,
 }: SettingsPanelProps) {
   const set = <K extends keyof StampSettings>(key: K, value: StampSettings[K]) =>
     onChange({ ...settings, [key]: value });
@@ -184,13 +189,24 @@ export function SettingsPanel({
         </div>
 
         <div className="mt-auto space-y-2 pt-2">
-          <Button className="w-full" onClick={onExport} disabled={exporting || count === 0}>
+          {shareReady && (
+            <Button className="w-full" onClick={onShare}>
+              <ImageDown className="size-4" />
+              保存到相册
+            </Button>
+          )}
+          <Button
+            className="w-full"
+            variant={shareReady ? 'outline' : 'default'}
+            onClick={onExport}
+            disabled={exporting || count === 0}
+          >
             {exporting ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Download className="size-4" />
             )}
-            批量导出下载
+            {shareReady ? '重新生成' : '批量导出'}
           </Button>
           {status && (
             <p className="text-center text-xs text-muted-foreground" aria-live="polite">
