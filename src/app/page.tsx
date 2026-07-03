@@ -221,6 +221,7 @@ export default function Page() {
       fontSize: s.fontSize ? Number(s.fontSize) : null,
       offsetX: s.offsetX,
       offsetY: s.offsetY,
+      keepExif: true,
     };
 
     try {

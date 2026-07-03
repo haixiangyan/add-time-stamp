@@ -3,6 +3,8 @@
 // export run entirely in the browser — no upload, no serverless CPU/size limits.
 // The geometry mirrors the server renderer in lib/server/stamp.ts.
 
+import { preserveExif } from './exif';
+
 const FONT_FILES: Record<string, string> = {
   Arial: 'Arimo-Bold.ttf',
   'Times New Roman': 'Tinos-Bold.ttf',
@@ -82,6 +84,8 @@ export interface StampRenderOpts {
   quality?: number;
   /** Downscale the long edge for a fast preview; omit for a full-resolution export. */
   maxEdge?: number;
+  /** Copy the original photo's EXIF (capture time, GPS, …) onto the output. */
+  keepExif?: boolean;
 }
 
 export interface StampRenderResult {
@@ -156,11 +160,14 @@ export async function stampImage(
     ctx.strokeText(label, x, y);
     ctx.fillText(label, x, y);
 
+    const mime = outputMime(file.name);
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, outputMime(file.name), opts.quality ?? 0.95),
+      canvas.toBlob(resolve, mime, opts.quality ?? 0.95),
     );
     if (!blob) throw new Error('导出失败');
-    return { blob, fontSize, font };
+    // Re-attach the original EXIF (canvas strips it). Only JPEG carries it here.
+    const out = opts.keepExif && mime === 'image/jpeg' ? await preserveExif(file, blob, w, h) : blob;
+    return { blob: out, fontSize, font };
   } finally {
     bitmap.close();
   }
