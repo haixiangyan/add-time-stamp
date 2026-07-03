@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "archiver", "opentype.js"],
   // Ship the bundled .ttf files inside the serverless functions that render.
   outputFileTracingIncludes: {
-    "/api/preview": ["./fonts/**"],
-    "/api/stamp": ["./fonts/**"],
+    "/api/preview": ["./public/fonts/**"],
+    "/api/stamp": ["./public/fonts/**"],
   },
 };
 

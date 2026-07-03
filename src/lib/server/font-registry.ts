@@ -29,7 +29,9 @@ const byName = new Map(BUNDLED_FONTS.map((f) => [f.name, f]));
 const cache = new Map<string, Font>();
 
 function fontsDir() {
-  return path.join(process.cwd(), 'fonts');
+  // Bundled fonts live under public/ so the browser can fetch them too (client
+  // rendering); the server reads the same files from disk.
+  return path.join(process.cwd(), 'public', 'fonts');
 }
 
 /** Load (and cache) the parsed font for a display name, falling back to default. */

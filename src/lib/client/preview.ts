@@ -51,3 +51,21 @@ export function resolveDateIso(item: ImageItem, dateSource: string): string | nu
   if (dateSource === 'exif') return exif;
   return exif ?? fileIso; // auto
 }
+
+/** Format an ISO timestamp as the `YYYY MM DD` stamp label (UTC, matching the server). */
+export function formatStampLabel(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()} ${p(d.getUTCMonth() + 1)} ${p(d.getUTCDate())}`;
+}
+
+/**
+ * The stamp label for an item. For `auto` we reuse the server-computed
+ * `meta.stampDate` so it matches the thumbnail badge exactly; otherwise we
+ * resolve and format the date on the client.
+ */
+export function resolveStampLabel(item: ImageItem, dateSource: string): string | null {
+  if (dateSource === 'auto' && item.meta?.stampDate) return item.meta.stampDate;
+  const iso = resolveDateIso(item, dateSource);
+  return iso ? formatStampLabel(iso) : null;
+}

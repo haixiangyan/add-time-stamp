@@ -14,7 +14,9 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
-import { makePreviewBlob, resolveDateIso } from '@/lib/client/preview';
+import { PREVIEW_MAX_EDGE, resolveStampLabel } from '@/lib/client/preview';
+import { stampImage, stampedName } from '@/lib/client/render';
+import { zip, strToU8 } from 'fflate';
 import {
   DEFAULT_COLOR,
   DEFAULT_FONTS,
@@ -28,6 +30,14 @@ const uid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+function downloadBlob(blob: Blob, name: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 export default function Page() {
   const [items, setItems] = useState<ImageItem[]>([]);
@@ -64,10 +74,6 @@ export default function Page() {
 
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
-  const previewAbort = useRef<AbortController | null>(null);
-  // Downscaled preview upload per image — depends only on the source image, so
-  // it's reused across settings changes to keep every preview fast.
-  const previewBlobCache = useRef<Map<string, Blob>>(new Map());
 
   useEffect(() => {
     fetch('/api/positions')
@@ -146,66 +152,41 @@ export default function Page() {
       setPreviewError(null);
       return;
     }
-    if (previewAbort.current) previewAbort.current.abort();
-    const ctrl = new AbortController();
-    previewAbort.current = ctrl;
     const seq = ++previewSeq.current;
-
     setPreviewLoading(true);
     setPreviewError(null);
 
     const s = settings;
-    // Upload a browser-downscaled copy so the server isn't re-decoding a
-    // multi-MB photo on every keystroke. The stripped copy has no EXIF, so the
-    // date is resolved on the client and sent as an explicit fallback.
-    let uploadFile: Blob = item.file;
-    let uploadName = item.file.name;
-    let dateSource = s.dateSource;
-    let fileDate = new Date(item.file.lastModified).toISOString();
-    try {
-      let blob = previewBlobCache.current.get(item.id);
-      if (!blob) {
-        blob = await makePreviewBlob(item.file);
-        previewBlobCache.current.set(item.id, blob);
-      }
-      if (seq !== previewSeq.current) return;
-      uploadFile = blob;
-      uploadName = 'preview.jpg';
-      dateSource = 'file';
-      fileDate = resolveDateIso(item, s.dateSource) ?? '';
-    } catch {
-      /* fall back to uploading the original; server resolves the date */
+    const label = resolveStampLabel(item, s.dateSource);
+    if (!label) {
+      setPreviewUrl(null);
+      setPreviewError('无法获取日期');
+      setPreviewLabel('');
+      setPreviewFont('');
+      setPreviewLoading(false);
+      return;
     }
 
-    const fd = new FormData();
-    fd.append('file', uploadFile, uploadName);
-    fd.append('fileDate', fileDate);
-    fd.append('fonts', JSON.stringify(s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS));
-    fd.append('color', s.color);
-    fd.append('position', s.position);
-    fd.append('dateSource', dateSource);
-    if (s.fontSize) fd.append('fontSize', s.fontSize);
-    fd.append('offsetX', String(s.offsetX));
-    fd.append('offsetY', String(s.offsetY));
-
     try {
-      const res = await fetch('/api/preview', { method: 'POST', body: fd, signal: ctrl.signal });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || res.statusText);
-      }
+      // Render the stamp in the browser (downscaled for a responsive preview).
+      const { blob, fontSize, font } = await stampImage(item.file, label, {
+        fonts: s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS,
+        color: s.color,
+        position: s.position,
+        fontSize: s.fontSize ? Number(s.fontSize) : null,
+        offsetX: s.offsetX,
+        offsetY: s.offsetY,
+        maxEdge: PREVIEW_MAX_EDGE,
+      });
       if (seq !== previewSeq.current) return;
-      const blob = await res.blob();
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(blob);
       });
-      setPreviewLabel(res.headers.get('X-Stamp-Label') || '');
-      setPreviewFont(res.headers.get('X-Stamp-Font') || '');
-      const fs = Number(res.headers.get('X-Stamp-Font-Size'));
-      setAutoFontSize(Number.isFinite(fs) && fs > 0 ? fs : null);
+      setPreviewLabel(label);
+      setPreviewFont(font);
+      setAutoFontSize(s.fontSize ? null : fontSize);
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
       if (seq !== previewSeq.current) return;
       setPreviewUrl(null);
       setPreviewError((e as Error).message || '预览失败');
@@ -223,7 +204,6 @@ export default function Page() {
   const clearAll = () => {
     for (const i of items) URL.revokeObjectURL(i.url);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewBlobCache.current.clear();
     setItems([]);
     setSelectedId(null);
     setPreviewUrl(null);
@@ -237,34 +217,50 @@ export default function Page() {
     if (!items.length) return;
     setExporting(true);
     setStatus('处理中…');
-    const fd = new FormData();
-    for (const i of items) fd.append('files', i.file);
     const s = settings;
-    fd.append('fonts', JSON.stringify(s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS));
-    fd.append('color', s.color);
-    fd.append('position', s.position);
-    fd.append('dateSource', s.dateSource);
-    if (s.fontSize) fd.append('fontSize', s.fontSize);
-    fd.append('offsetX', String(s.offsetX));
-    fd.append('offsetY', String(s.offsetY));
-    fd.append('fileDates', JSON.stringify(items.map((i) => new Date(i.file.lastModified).toISOString())));
+    const opts = {
+      fonts: s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS,
+      color: s.color,
+      position: s.position,
+      fontSize: s.fontSize ? Number(s.fontSize) : null,
+      offsetX: s.offsetX,
+      offsetY: s.offsetY,
+    };
 
     try {
-      const res = await fetch('/api/stamp', { method: 'POST', body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || res.statusText);
+      const single = items.length === 1;
+      const entries: Record<string, Uint8Array> = {};
+      const results: { name: string; ok: boolean; label?: string; outName?: string; error?: string }[] = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const label = resolveStampLabel(item, s.dateSource);
+        if (!label) {
+          results.push({ name: item.file.name, ok: false, error: '无法获取日期' });
+          continue;
+        }
+        setStatus(`处理中… ${i + 1}/${items.length}`);
+        // Render full-resolution in the browser — no upload, no size limit.
+        const { blob } = await stampImage(item.file, label, { ...opts, fontIndex: i });
+        const outName = stampedName(item.file.name);
+        if (single) {
+          downloadBlob(blob, outName);
+          setStatus(`已下载 ${outName}`);
+          return;
+        }
+        entries[outName] = new Uint8Array(await blob.arrayBuffer());
+        results.push({ name: item.file.name, ok: true, label, outName });
       }
-      const blob = await res.blob();
-      const disp = res.headers.get('Content-Disposition') || '';
-      const match = disp.match(/filename="?([^";]+)"?/);
-      const name = match ? decodeURIComponent(match[1]) : 'time-stamp-export.zip';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      setStatus(`已下载 ${name}`);
+
+      const okCount = results.filter((r) => r.ok).length;
+      if (!okCount) throw new Error(results[0]?.error || '没有可导出的图片');
+
+      entries['_manifest.json'] = strToU8(JSON.stringify(results, null, 2));
+      const data = await new Promise<Uint8Array>((resolve, reject) =>
+        zip(entries, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out))),
+      );
+      downloadBlob(new Blob([data as BlobPart], { type: 'application/zip' }), 'time-stamp-export.zip');
+      setStatus(`已下载 time-stamp-export.zip（${okCount}/${items.length}）`);
     } catch (e) {
       setStatus(`失败: ${(e as Error).message}`);
     } finally {
