@@ -19,6 +19,25 @@ function getAllFiles(form: FormData): File[] {
   return out;
 }
 
+// Process up to `limit` images at once so sharp's decode/encode work overlaps
+// instead of running strictly one file at a time. Results keep input order.
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -63,19 +82,25 @@ export async function POST(req: Request) {
       archive.on('end', resolve);
       archive.on('error', reject);
     });
-    const results: unknown[] = [];
+    type Processed =
+      | { ok: true; outName: string; buffer: Buffer; result: unknown }
+      | { ok: false; result: unknown };
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const processed = await mapLimit<File, Processed>(files, 4, async (file, i) => {
       const opts: StampOptions = { ...baseOpts, fallbackDate: fileDates[i] || null, fontIndex: i };
       try {
         const buf = Buffer.from(await file.arrayBuffer());
         const { buffer, outName, label, font } = await stampBuffer(buf, file.name, opts);
-        archive.append(buffer, { name: outName });
-        results.push({ name: file.name, ok: true, label, outName, font });
+        return { ok: true, outName, buffer, result: { name: file.name, ok: true, label, outName, font } };
       } catch (e) {
-        results.push({ name: file.name, ok: false, error: (e as Error).message });
+        return { ok: false, result: { name: file.name, ok: false, error: (e as Error).message } };
       }
+    });
+
+    const results: unknown[] = [];
+    for (const p of processed) {
+      if (p.ok) archive.append(p.buffer, { name: p.outName });
+      results.push(p.result);
     }
     archive.append(JSON.stringify(results, null, 2), { name: '_manifest.json' });
     await archive.finalize();

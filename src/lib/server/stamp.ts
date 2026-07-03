@@ -331,13 +331,20 @@ export async function stampBuffer(
   if (!date) throw new Error('无法获取日期');
   const label = formatDate(date);
 
-  const img = sharp(inputBuffer, { failOn: 'none' }).rotate();
-  const meta = await img.metadata();
-  if (!meta.width || !meta.height) throw new Error('无法读取图片');
+  // Bake in EXIF orientation, then size the overlay against the *resulting*
+  // dimensions. Using the pre-rotation metadata sizes the overlay wrong for
+  // photos with an orientation tag (portrait phone photos), which sharp then
+  // rejects with "Image to composite must have same dimensions or smaller".
+  const oriented = sharp(inputBuffer, { failOn: 'none' }).rotate();
+  const meta = await oriented.metadata();
+  const { data: baseData, info } = await oriented.toBuffer({ resolveWithObject: true });
+  const w = info.width;
+  const h = info.height;
+  if (!w || !h) throw new Error('无法读取图片');
 
-  const { fontSize, padding } = stampMetrics(meta.width, meta.height, opts);
+  const { fontSize, padding } = stampMetrics(w, h, opts);
   const font = pickFont(opts, opts.fontIndex || 0);
-  const svg = buildOverlaySvg(meta.width, meta.height, label, {
+  const svg = buildOverlaySvg(w, h, label, {
     fontSize,
     padding,
     color: opts.color || DEFAULT_COLOR,
@@ -347,7 +354,7 @@ export async function stampBuffer(
     offsetY: Number(opts.offsetY) || 0,
   });
 
-  let pipeline = img.composite([{ input: svg, top: 0, left: 0 }]).withMetadata();
+  let pipeline = sharp(baseData).composite([{ input: svg, top: 0, left: 0 }]).withMetadata();
   pipeline = applyEncoding(pipeline, ext, opts.quality ?? 100, meta);
   const outBuffer = await pipeline.toBuffer();
   const base = path.basename(originalName, ext);
