@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Trash2, Clock, SlidersHorizontal } from 'lucide-react';
+import { Clock, SlidersHorizontal } from 'lucide-react';
 import { Dropzone } from '@/components/stamp/dropzone';
 import { Filmstrip } from '@/components/stamp/filmstrip';
 import { MetaPanel } from '@/components/stamp/meta-panel';
@@ -20,12 +20,17 @@ import { stampImage, stampedName } from '@/lib/client/render';
 import { isHeif, heifThumbnailBlob } from '@/lib/client/heif';
 import { zip } from 'fflate';
 import {
-  DEFAULT_COLOR,
   DEFAULT_FONTS,
   DEFAULT_SELECTED_FONTS,
   type ImageItem,
   type StampSettings,
 } from '@/lib/stamp-settings';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  usePersistedLayout,
+} from '@/lib/client/persist';
 
 const uid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -52,15 +57,14 @@ export default function Page() {
     'bottom-center',
     'top-center',
   ]);
-  const [settings, setSettings] = useState<StampSettings>({
-    fonts: DEFAULT_SELECTED_FONTS,
-    color: DEFAULT_COLOR,
-    position: 'bottom-right',
-    dateSource: 'auto',
-    fontSize: '',
-    offsetX: 0,
-    offsetY: 0,
-  });
+  const [settings, setSettings] = useState<StampSettings>(() => loadSettings());
+
+  const mainLayout = usePersistedLayout('ts-main');
+  const leftColLayout = usePersistedLayout('ts-left-col');
+
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLabel, setPreviewLabel] = useState('');
@@ -143,6 +147,10 @@ export default function Page() {
   };
 
   const selectedItem = items.find((i) => i.id === selectedId) ?? null;
+  const gps =
+    selectedItem?.meta && typeof selectedItem.meta.latitude === 'number' && typeof selectedItem.meta.longitude === 'number'
+      ? { latitude: selectedItem.meta.latitude, longitude: selectedItem.meta.longitude }
+      : null;
 
   const refreshPreviewRef = useRef<() => void>(() => {});
 
@@ -172,7 +180,7 @@ export default function Page() {
     setPreviewError(null);
 
     const s = settings;
-    const label = resolveStampLabel(item, s.dateSource);
+    const label = resolveStampLabel(item, s.dateSource, s.customDate);
     if (!label) {
       setPreviewUrl(null);
       setPreviewError('无法获取日期');
@@ -215,6 +223,22 @@ export default function Page() {
   useEffect(() => {
     refreshPreviewRef.current = refreshPreview;
   }, [refreshPreview]);
+
+  const removeItem = (id: string) => {
+    setItems((prev) => {
+      const target = prev.find((i) => i.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      const next = prev.filter((i) => i.id !== id);
+      if (selectedId === id) {
+        setSelectedId(next[0]?.id ?? null);
+      }
+      return next;
+    });
+  };
+
+  const resetAll = () => {
+    setSettings(DEFAULT_SETTINGS);
+  };
 
   const clearAll = () => {
     for (const i of items) URL.revokeObjectURL(i.url);
@@ -268,7 +292,7 @@ export default function Page() {
       const files: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        const label = resolveStampLabel(item, s.dateSource);
+        const label = resolveStampLabel(item, s.dateSource, s.customDate);
         if (!label) continue;
         setStatus(`处理中… ${i + 1}/${items.length}`);
         // Render full-resolution in the browser — no upload, no size limit.
@@ -346,10 +370,6 @@ export default function Page() {
             <div className="hidden items-center gap-2 sm:flex">
               <Dropzone onFiles={addFiles} compact loading={importing} />
             </div>
-            <Button variant="ghost" size="sm" onClick={clearAll}>
-              <Trash2 className="size-4" />
-              清空
-            </Button>
           </div>
         )}
       </header>
@@ -369,9 +389,16 @@ export default function Page() {
               direction="horizontal"
               id="ts-main"
               className="h-full"
+              defaultLayout={mainLayout.defaultLayout}
+              onLayoutChanged={mainLayout.onLayoutChanged}
             >
               <ResizablePanel id="ts-left" defaultSize="74%" minSize="40%">
-                <ResizablePanelGroup direction="vertical" id="ts-left-col">
+                <ResizablePanelGroup
+                  direction="vertical"
+                  id="ts-left-col"
+                  defaultLayout={leftColLayout.defaultLayout}
+                  onLayoutChanged={leftColLayout.onLayoutChanged}
+                >
                   <ResizablePanel id="ts-preview" defaultSize="64%" minSize="30%">
                     <PreviewStage
                       previewUrl={previewUrl}
@@ -389,7 +416,8 @@ export default function Page() {
                       items={items}
                       selectedId={selectedId}
                       onSelect={setSelectedId}
-                      onAdd={addFiles}
+                      onRemove={removeItem}
+                      onClear={clearAll}
                       loading={importing}
                     />
                   </ResizablePanel>
@@ -407,6 +435,9 @@ export default function Page() {
                   status={status}
                   count={items.length}
                   autoFontSize={autoFontSize}
+                  gps={gps}
+                  onClear={clearAll}
+                  onReset={resetAll}
                   shareReady={!!shareFiles}
                   onShare={shareToPhotos}
                 />
@@ -432,7 +463,8 @@ export default function Page() {
                   items={items}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
-                  onAdd={addFiles}
+                  onRemove={removeItem}
+                  onClear={clearAll}
                   loading={importing}
                 />
               </div>
@@ -457,6 +489,7 @@ export default function Page() {
             status={status}
             count={items.length}
             autoFontSize={autoFontSize}
+            gps={gps}
             shareReady={!!shareFiles}
             onShare={shareToPhotos}
           />

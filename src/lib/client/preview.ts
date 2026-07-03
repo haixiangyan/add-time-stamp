@@ -44,11 +44,9 @@ function exifDateIso(meta: ImageItem['meta']): string | null {
  * Returns an ISO string (formatted to `YYYY MM DD` server-side) or null when the
  * selected source has no date.
  */
-export function resolveDateIso(item: ImageItem, dateSource: string): string | null {
+export function resolveDateIso(item: ImageItem, dateSource: string, customDate?: string): string | null {
   const fileIso = new Date(item.file.lastModified).toISOString();
   const exif = exifDateIso(item.meta);
-  if (dateSource === 'file') return fileIso;
-  if (dateSource === 'exif') return exif;
   return exif ?? fileIso; // auto
 }
 
@@ -62,10 +60,16 @@ export function formatStampLabel(iso: string): string {
 /**
  * The stamp label for an item. For `auto` we reuse the server-computed
  * `meta.stampDate` so it matches the thumbnail badge exactly; otherwise we
- * resolve and format the date on the client.
+ * resolve and format the date on the client. For `custom` the raw text is
+ * returned as-is (no validation, no formatting).
  */
-export function resolveStampLabel(item: ImageItem, dateSource: string): string | null {
+export function resolveStampLabel(
+  item: ImageItem,
+  dateSource: string,
+  customDate?: string,
+): string | null {
+  if (dateSource === 'custom') return customDate || null;
   if (dateSource === 'auto' && item.meta?.stampDate) return item.meta.stampDate;
-  const iso = resolveDateIso(item, dateSource);
+  const iso = resolveDateIso(item, dateSource, customDate);
   return iso ? formatStampLabel(iso) : null;
 }

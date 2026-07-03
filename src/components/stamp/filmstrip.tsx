@@ -3,27 +3,84 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, FolderOpen, Loader2 } from 'lucide-react';
+import { Loader2, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { filterImageFiles, type ImageItem } from '@/lib/stamp-settings';
+import { type ImageItem } from '@/lib/stamp-settings';
 
-// webkitdirectory isn't in React's input attribute types
-const dirAttrs = { webkitdirectory: '', directory: '' } as unknown as Record<
-  string,
-  string
->;
+interface ThumbnailProps {
+  item: ImageItem;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onRemove: (id: string) => void;
+}
+
+function Thumbnail({ item, selected, onSelect, onRemove }: ThumbnailProps) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setLoaded(false);
+  }, [item.url]);
+
+  return (
+    <button
+      type="button"
+      title={item.file.name}
+      onClick={() => onSelect(item.id)}
+      className={cn(
+        'group relative h-full min-w-12 shrink-0 overflow-hidden rounded-md border bg-muted text-left transition-colors',
+        selected ? 'border-primary ring-2 ring-primary/40' : 'border-transparent hover:border-primary/40',
+      )}
+    >
+      {!loaded && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <img
+        src={item.url}
+        alt={item.file.name}
+        className={cn('aspect-square h-full object-cover', !loaded && 'opacity-0')}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(false)}
+      />
+      <span
+        role="button"
+        tabIndex={-1}
+        aria-label="删除"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(item.id);
+        }}
+        className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/80 group-hover:opacity-100"
+      >
+        <X className="size-3" />
+      </span>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-2 pb-1.5 pt-4">
+        <p className="truncate text-[10px] font-medium text-white">{item.file.name}</p>
+        {item.meta?.stampDate ? (
+          <Badge variant="secondary" className="w-fit px-1 py-0 text-[10px]">
+            {item.meta.stampDate}
+          </Badge>
+        ) : (
+          <span className="truncate text-[10px] text-white/70">
+            {item.meta?.error ?? '加载中…'}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
 
 interface FilmstripProps {
   items: ImageItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: (files: File[]) => void;
+  onRemove: (id: string) => void;
+  onClear: () => void;
   loading?: boolean;
 }
 
-export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: FilmstripProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
+export function Filmstrip({ items, selectedId, onSelect, onRemove, onClear, loading }: FilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -53,12 +110,6 @@ export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: Films
     }
   };
 
-  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = filterImageFiles(e.target.files ?? []);
-    if (files.length) onAdd(files);
-    e.target.value = '';
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col rounded-md border">
       <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
@@ -71,26 +122,10 @@ export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: Films
             </span>
           )}
         </span>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={() => folderRef.current?.click()}
-          >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
-            选择文件夹
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={() => inputRef.current?.click()}
-          >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-            添加图片
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={onClear}>
+          <Trash2 className="size-4" />
+          清空
+        </Button>
       </div>
       <div className="relative min-h-0 flex-1">
         <div
@@ -100,40 +135,15 @@ export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: Films
           className="h-full overflow-x-auto overflow-y-hidden"
         >
         <div className="flex h-full gap-2 p-3">
-          {items.map((item) => {
-            const selected = item.id === selectedId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                title={item.file.name}
-                onClick={() => onSelect(item.id)}
-                className={cn(
-                  'group relative h-full min-w-12 shrink-0 overflow-hidden rounded-md border bg-muted text-left transition-colors',
-                  selected ? 'border-primary ring-2 ring-primary/40' : 'border-transparent hover:border-primary/40',
-                )}
-              >
-                <img
-                  src={item.url}
-                  alt={item.file.name}
-                  className="aspect-square h-full object-cover"
-                  loading="lazy"
-                />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-2 pb-1.5 pt-4">
-                  <p className="truncate text-[10px] font-medium text-white">{item.file.name}</p>
-                  {item.meta?.stampDate ? (
-                    <Badge variant="secondary" className="w-fit px-1 py-0 text-[10px]">
-                      {item.meta.stampDate}
-                    </Badge>
-                  ) : (
-                    <span className="truncate text-[10px] text-white/70">
-                      {item.meta?.error ?? '加载中…'}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+          {items.map((item) => (
+            <Thumbnail
+              key={item.id}
+              item={item}
+              selected={item.id === selectedId}
+              onSelect={onSelect}
+              onRemove={onRemove}
+            />
+          ))}
         </div>
         </div>
         <div
@@ -149,15 +159,6 @@ export function Filmstrip({ items, selectedId, onSelect, onAdd, loading }: Films
           )}
         />
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept="image/jpeg,image/png,image/webp,image/tiff,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.tif,.tiff,.heic,.heif"
-        hidden
-        onChange={handlePick}
-      />
-      <input ref={folderRef} type="file" multiple hidden onChange={handlePick} {...dirAttrs} />
     </div>
   );
 }

@@ -13,14 +13,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { FontMultiSelect } from './font-multi-select';
-import { Download, Loader2, ImageDown } from 'lucide-react';
+import { FontSelect } from './font-select';
+import { Download, Loader2, ImageDown, MapPin, RotateCcw } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import {
   DATE_SOURCE_LABELS,
   POSITION_LABELS,
   type StampSettings,
 } from '@/lib/stamp-settings';
+
+const GpsMap = dynamic(() => import('./gps-map').then((m) => m.GpsMap), {
+  ssr: false,
+  loading: () => <div className="h-40 w-full animate-pulse rounded-md bg-muted" />,
+});
+
+interface GpsPoint {
+  latitude: number;
+  longitude: number;
+}
 
 interface SettingsPanelProps {
   fonts: string[];
@@ -32,13 +43,13 @@ interface SettingsPanelProps {
   status: string;
   count: number;
   autoFontSize: number | null;
-  /** Hide the built-in card header (e.g. when a drawer already shows the title). */
+  gps?: GpsPoint | null;
   hideHeader?: boolean;
-  /** Extra classes for the outer card — used to flatten it inside a drawer. */
   className?: string;
-  /** Rendered files are ready to be saved to the photo library (mobile). */
   shareReady?: boolean;
   onShare?: () => void;
+  onClear?: () => void;
+  onReset?: () => void;
 }
 
 export function SettingsPanel({
@@ -51,10 +62,13 @@ export function SettingsPanel({
   status,
   count,
   autoFontSize,
+  gps,
   hideHeader,
   className,
   shareReady,
   onShare,
+  onClear,
+  onReset,
 }: SettingsPanelProps) {
   const set = <K extends keyof StampSettings>(key: K, value: StampSettings[K]) =>
     onChange({ ...settings, [key]: value });
@@ -65,8 +79,12 @@ export function SettingsPanel({
   return (
     <Card className={cn('flex h-full flex-col', className)}>
       {!hideHeader && (
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">水印设置</CardTitle>
+          <Button onClick={onReset} variant="ghost" size="sm">
+            <RotateCcw className="size-4" />
+            重置
+          </Button>
         </CardHeader>
       )}
       <CardContent className="flex flex-1 flex-col gap-5 overflow-y-auto">
@@ -124,13 +142,11 @@ export function SettingsPanel({
         <Separator />
 
         <div className="space-y-2">
-          <Label>
-            字体 <span className="text-xs font-normal text-muted-foreground">可多选，批量时轮换</span>
-          </Label>
-          <FontMultiSelect
+          <Label>字体</Label>
+          <FontSelect
             fonts={fonts}
-            selected={settings.fonts}
-            onChange={(next) => set('fonts', next)}
+            selected={settings.fonts[0] ?? null}
+            onChange={(next) => set('fonts', [next])}
           />
         </div>
 
@@ -186,7 +202,35 @@ export function SettingsPanel({
               ))}
             </SelectContent>
           </Select>
+          {settings.dateSource === 'custom' && (
+            <Input
+              type="text"
+              placeholder="如：193 年 12月1 日"
+              value={settings.customDate}
+              onChange={(e) => set('customDate', e.target.value)}
+            />
+          )}
         </div>
+
+        {gps && (
+          <div className="space-y-2">
+            <Label>
+              拍照位置{' '}
+              <span className="font-mono text-xs font-normal text-muted-foreground">
+                {gps.latitude.toFixed(5)}, {gps.longitude.toFixed(5)}
+              </span>
+            </Label>
+            <div className="overflow-hidden rounded-md border">
+              <GpsMap latitude={gps.latitude} longitude={gps.longitude} />
+            </div>
+          </div>
+        )}
+        {!gps && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <MapPin className="size-3.5" />
+            该图片无 GPS 信息
+          </div>
+        )}
 
         <div className="mt-auto space-y-2 pt-2">
           {shareReady && (

@@ -27,6 +27,8 @@ export async function readImageMeta(file: File): Promise<ImageMeta> {
   let width: number | undefined;
   let height: number | undefined;
   let stampDate: string | null = null;
+  let latitude: number | undefined;
+  let longitude: number | undefined;
 
   try {
     const parsed = (await exifr.parse(file)) as Record<string, unknown> | undefined;
@@ -37,6 +39,12 @@ export async function readImageMeta(file: File): Promise<ImageMeta> {
       const d = parsed.DateTimeOriginal ?? parsed.CreateDate ?? parsed.ModifyDate;
       if (d instanceof Date && !Number.isNaN(d.getTime())) {
         stampDate = formatStampLabel(d.toISOString());
+      }
+      const lat = num(parsed.latitude);
+      const lng = num(parsed.longitude);
+      if (lat !== undefined && lng !== undefined) {
+        latitude = lat;
+        longitude = lng;
       }
     }
   } catch {
@@ -53,5 +61,7 @@ export async function readImageMeta(file: File): Promise<ImageMeta> {
     format: file.type ? file.type.replace(/^image\//, '') : undefined,
     exif,
     stampDate,
+    latitude,
+    longitude,
   };
 }

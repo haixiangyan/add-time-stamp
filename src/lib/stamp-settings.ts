@@ -8,9 +8,8 @@ export const POSITION_LABELS: Record<string, string> = {
 };
 
 export const DATE_SOURCE_LABELS: Record<string, string> = {
-  auto: '自动（EXIF → 文件时间）',
-  exif: '仅 EXIF',
-  file: '文件修改时间',
+  auto: '原图（EXIF → 文件时间）',
+  custom: '自定义',
 };
 
 // Kept in sync with the bundled fonts in web/src/lib/server/font-registry.ts
@@ -39,6 +38,8 @@ export interface ImageMeta {
   chromaSubsampling?: string;
   exif: Record<string, unknown> | null;
   stampDate: string | null;
+  latitude?: number;
+  longitude?: number;
   error?: string;
 }
 
@@ -47,6 +48,7 @@ export interface StampSettings {
   color: string;
   position: string;
   dateSource: string;
+  customDate: string;
   fontSize: string;
   offsetX: number;
   offsetY: number;

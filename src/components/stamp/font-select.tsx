@@ -4,22 +4,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Search, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-interface FontMultiSelectProps {
+interface FontSelectProps {
   fonts: string[];
-  selected: string[];
-  onChange: (next: string[]) => void;
+  selected: string | null;
+  onChange: (next: string) => void;
 }
 
 const RENDER_LIMIT = 300;
 
-export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectProps) {
+export function FontSelect({ fonts, selected, onChange }: FontSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   useEffect(() => {
     if (!open) return;
@@ -38,17 +36,7 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
 
   const visible = filtered.slice(0, RENDER_LIMIT);
 
-  const toggle = (f: string) => {
-    if (selectedSet.has(f)) onChange(selected.filter((s) => s !== f));
-    else onChange([...selected, f]);
-  };
-
-  const triggerLabel =
-    selected.length === 0
-      ? '请选择字体'
-      : selected.length === 1
-        ? selected[0]
-        : `已选 ${selected.length} 个字体`;
+  const triggerLabel = selected ?? '请选择字体';
 
   return (
     <div className="relative" ref={ref}>
@@ -58,7 +46,9 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
         className="w-full justify-between font-normal"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="truncate">{triggerLabel}</span>
+        <span className="truncate" style={{ fontFamily: selected ?? undefined }}>
+          {triggerLabel}
+        </span>
         <ChevronDown className="size-4 opacity-50" />
       </Button>
 
@@ -79,12 +69,15 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
           <div className="max-h-64 overflow-y-auto">
             <div className="p-1">
               {visible.map((f) => {
-                const checked = selectedSet.has(f);
+                const checked = selected === f;
                 return (
                   <button
                     key={f}
                     type="button"
-                    onClick={() => toggle(f)}
+                    onClick={() => {
+                      onChange(f);
+                      setOpen(false);
+                    }}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
                       checked && 'bg-accent/50',
@@ -92,7 +85,7 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
                   >
                     <span
                       className={cn(
-                        'flex size-4 shrink-0 items-center justify-center rounded-sm border',
+                        'flex size-4 shrink-0 items-center justify-center rounded-full border',
                         checked ? 'bg-primary border-primary text-primary-foreground' : 'border-input',
                       )}
                     >
@@ -113,33 +106,6 @@ export function FontMultiSelect({ fonts, selected, onChange }: FontMultiSelectPr
                 <p className="px-2 py-4 text-center text-sm text-muted-foreground">无匹配字体</p>
               )}
             </div>
-          </div>
-          <div className="flex items-center justify-between border-t p-2">
-            <div className="flex flex-wrap gap-1">
-              {selected.slice(0, 3).map((f) => (
-                <Badge key={f} variant="secondary" className="text-xs">
-                  {f}
-                </Badge>
-              ))}
-              {selected.length > 3 && (
-                <Badge variant="secondary" className="text-xs">
-                  +{selected.length - 3}
-                </Badge>
-              )}
-              {selected.length === 0 && (
-                <span className="text-xs text-muted-foreground">未选择</span>
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => onChange([])}
-              disabled={selected.length === 0}
-            >
-              清除
-            </Button>
           </div>
         </div>
       )}

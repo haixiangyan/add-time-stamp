@@ -29,6 +29,10 @@ export function MetaPanel({ item }: MetaPanelProps) {
     if (m.space) rows.push(['色彩空间', m.space]);
     if (m.density) rows.push(['DPI', String(m.density)]);
     if (m.stampDate) rows.push(['水印日期', m.stampDate]);
+    if (typeof m.latitude === 'number' && typeof m.longitude === 'number') {
+      rows.push(['纬度', m.latitude.toFixed(6)]);
+      rows.push(['经度', m.longitude.toFixed(6)]);
+    }
     if (m.exif) {
       for (const [k, v] of Object.entries(m.exif)) {
         rows.push([`EXIF.${k}`, String(v)]);
