@@ -132,7 +132,10 @@ export default function Page() {
 
   useEffect(() => {
     schedulePreview();
-  }, [selectedId, settings, schedulePreview]);
+    // selectedItem?.meta is included so the preview re-runs once EXIF metadata
+    // arrives — the client resolves the stamp date from it, and it may load
+    // after the first preview fired.
+  }, [selectedId, settings, selectedItem?.meta, schedulePreview]);
 
   const refreshPreview = useCallback(async () => {
     const item = items.find((i) => i.id === selectedId);
