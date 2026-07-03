@@ -4,6 +4,7 @@
 // The geometry mirrors the server renderer in lib/server/stamp.ts.
 
 import { preserveExif } from './exif';
+import { encodeHiFiJpeg } from './encode';
 
 const FONT_FILES: Record<string, string> = {
   Arial: 'Arimo-Bold.ttf',
@@ -114,7 +115,12 @@ export async function stampImage(
 ): Promise<StampRenderResult> {
   const font = pickFont(opts);
   const [bitmap] = await Promise.all([
-    createImageBitmap(file, { imageOrientation: 'from-image' }),
+    // keepExif (export): don't let the browser convert wide-gamut pixels to
+    // sRGB — we keep the raw values and re-attach the original ICC profile.
+    createImageBitmap(file, {
+      imageOrientation: 'from-image',
+      colorSpaceConversion: opts.keepExif ? 'none' : 'default',
+    }),
     ensureFont(font),
   ]);
   try {
@@ -161,6 +167,19 @@ export async function stampImage(
     ctx.fillText(label, x, y);
 
     const mime = outputMime(file.name);
+    const isJpeg = mime === 'image/jpeg' && /\.jpe?g$/i.test(file.name);
+
+    // High-fidelity JPEG export: re-encode with mozjpeg matching the source's
+    // chroma subsampling + ICC + EXIF, so only the watermark changes.
+    if (opts.keepExif && isJpeg) {
+      try {
+        const imageData = ctx.getImageData(0, 0, w, h);
+        return { blob: await encodeHiFiJpeg(file, imageData, w, h), fontSize, font };
+      } catch {
+        /* codec unavailable — fall back to canvas encode below */
+      }
+    }
+
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, mime, opts.quality ?? 0.95),
     );
