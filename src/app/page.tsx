@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Clock, SlidersHorizontal } from 'lucide-react';
+import { Clock, SlidersHorizontal, Download, Loader2 } from 'lucide-react';
 import { Dropzone } from '@/components/stamp/dropzone';
 import { Filmstrip } from '@/components/stamp/filmstrip';
 import { MetaPanel } from '@/components/stamp/meta-panel';
@@ -48,15 +48,15 @@ function downloadBlob(blob: Blob, name: string) {
 export default function Page() {
   const [items, setItems] = useState<ImageItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [fonts, setFonts] = useState<string[]>(DEFAULT_FONTS);
-  const [positions, setPositions] = useState<string[]>([
+  const fonts = DEFAULT_FONTS;
+  const positions = [
     'bottom-right',
     'bottom-left',
     'top-right',
     'top-left',
     'bottom-center',
     'top-center',
-  ]);
+  ];
   const [settings, setSettings] = useState<StampSettings>(() => loadSettings());
 
   const mainLayout = usePersistedLayout('ts-main');
@@ -76,29 +76,9 @@ export default function Page() {
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Rendered files awaiting the native share sheet (mobile "save to Photos").
-  const [shareFiles, setShareFiles] = useState<File[] | null>(null);
 
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
-
-  useEffect(() => {
-    fetch('/api/positions')
-      .then((r) => r.json())
-      .then((d) => d.positions && setPositions(d.positions))
-      .catch(() => {});
-    const loadFonts = async () => {
-      try {
-        const res = await fetch('/api/fonts');
-        const data = await res.json();
-        if (data.fonts?.length) setFonts(data.fonts);
-        if (!data.ready) setTimeout(loadFonts, 2500);
-      } catch {
-        /* keep defaults */
-      }
-    };
-    loadFonts();
-  }, []);
 
   const addFiles = useCallback((files: File[]) => {
     setItems((prev) => {
@@ -252,11 +232,6 @@ export default function Page() {
     setStatus('');
   };
 
-  const canShareFiles =
-    typeof navigator !== 'undefined' &&
-    typeof matchMedia !== 'undefined' &&
-    matchMedia('(pointer: coarse)').matches;
-
   const downloadFiles = async (files: File[]) => {
     if (files.length === 1) {
       downloadBlob(files[0], files[0].name);
@@ -276,7 +251,6 @@ export default function Page() {
     if (!items.length) return;
     setExporting(true);
     setStatus('处理中…');
-    setShareFiles(null);
     const s = settings;
     const opts = {
       fonts: s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS,
@@ -304,16 +278,6 @@ export default function Page() {
 
       if (!files.length) throw new Error('没有可导出的图片（无法获取日期）');
 
-      // On touch devices the native share sheet can save straight to Photos,
-      // but it must fire from a fresh user tap — so stash the files and show a
-      // "保存到相册" button instead of sharing here (encoding took too long to
-      // still count as the export tap's activation).
-      if (canShareFiles && navigator.canShare?.({ files })) {
-        setShareFiles(files);
-        setStatus(`已生成 ${files.length} 张，点“保存到相册”`);
-        return;
-      }
-
       await downloadFiles(files);
     } catch (e) {
       setStatus(`失败: ${(e as Error).message}`);
@@ -321,25 +285,6 @@ export default function Page() {
       setExporting(false);
     }
   };
-
-  const shareToPhotos = async () => {
-    if (!shareFiles) return;
-    try {
-      await navigator.share({ files: shareFiles });
-      setStatus(`已保存 ${shareFiles.length} 张到相册`);
-      setShareFiles(null);
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return; // cancelled — keep the button
-      // Sharing failed for another reason — fall back to a download.
-      await downloadFiles(shareFiles).catch(() => setStatus('保存失败'));
-      setShareFiles(null);
-    }
-  };
-
-  // Any settings/library change invalidates already-rendered files.
-  useEffect(() => {
-    setShareFiles(null);
-  }, [settings, items.length]);
 
   const hasItems = items.length > 0;
   const importing = items.some((i) => !i.meta);
@@ -370,6 +315,20 @@ export default function Page() {
             <div className="hidden items-center gap-2 sm:flex">
               <Dropzone onFiles={addFiles} compact loading={importing} />
             </div>
+            {/* Mobile: export straight from the header (settings live in a drawer) */}
+            <Button
+              size="sm"
+              className="lg:hidden"
+              onClick={exportZip}
+              disabled={exporting || items.length === 0}
+            >
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Download className="size-4" />
+              )}
+              导出
+            </Button>
           </div>
         )}
       </header>
@@ -438,8 +397,6 @@ export default function Page() {
                   gps={gps}
                   onClear={clearAll}
                   onReset={resetAll}
-                  shareReady={!!shareFiles}
-                  onShare={shareToPhotos}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -490,8 +447,6 @@ export default function Page() {
             count={items.length}
             autoFontSize={autoFontSize}
             gps={gps}
-            shareReady={!!shareFiles}
-            onShare={shareToPhotos}
           />
         </DrawerContent>
       </Drawer>

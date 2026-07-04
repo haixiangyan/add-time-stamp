@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { FontSelect } from './font-select';
-import { Download, Loader2, ImageDown, MapPin, RotateCcw } from 'lucide-react';
+import { Download, Loader2, MapPin, RotateCcw } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import {
@@ -46,8 +46,6 @@ interface SettingsPanelProps {
   gps?: GpsPoint | null;
   hideHeader?: boolean;
   className?: string;
-  shareReady?: boolean;
-  onShare?: () => void;
   onClear?: () => void;
   onReset?: () => void;
 }
@@ -65,8 +63,6 @@ export function SettingsPanel({
   gps,
   hideHeader,
   className,
-  shareReady,
-  onShare,
   onClear,
   onReset,
 }: SettingsPanelProps) {
@@ -233,15 +229,8 @@ export function SettingsPanel({
         )}
 
         <div className="mt-auto space-y-2 pt-2">
-          {shareReady && (
-            <Button className="w-full" onClick={onShare}>
-              <ImageDown className="size-4" />
-              保存到相册
-            </Button>
-          )}
           <Button
             className="w-full"
-            variant={shareReady ? 'outline' : 'default'}
             onClick={onExport}
             disabled={exporting || count === 0}
           >
@@ -250,7 +239,7 @@ export function SettingsPanel({
             ) : (
               <Download className="size-4" />
             )}
-            {shareReady ? '重新生成' : '批量导出'}
+            批量导出
           </Button>
           {status && (
             <p className="text-center text-xs text-muted-foreground" aria-live="polite">
