@@ -6,6 +6,7 @@
 import { preserveExif } from './exif';
 import { encodeHiFiJpeg, assembleJpeg } from './encode';
 import { isHeif, decodeHeif, heifExifApp1 } from './heif';
+import { createCanvas, get2d, canvasToBlob, getFontSet } from './canvas';
 
 const FONT_FILES: Record<string, string> = {
   Arial: 'Arimo-Bold.ttf',
@@ -32,7 +33,7 @@ function ensureFont(name: string): Promise<void> {
   if (!p) {
     const face = new FontFace(key, `url(/fonts/${FONT_FILES[key]})`);
     p = face.load().then((loaded) => {
-      document.fonts.add(loaded);
+      getFontSet().add(loaded);
     });
     fontPromises.set(key, p);
   }
@@ -137,11 +138,8 @@ export async function stampImage(
       w = Math.round(w * s);
       h = Math.round(h * s);
     }
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('无法创建画布');
+    const canvas = createCanvas(w, h);
+    const ctx = get2d(canvas);
     ctx.drawImage(bitmap, 0, 0, w, h);
 
     const dim = Math.max(w, h);
@@ -186,7 +184,7 @@ export async function stampImage(
         const blob = await assembleJpeg(imageData, {
           chromaSubsample: 2,
           progressive: true,
-          app1: heifExifApp1(origBytes, w, h),
+          app1: heifExifApp1(origBytes),
           icc: [],
         });
         return { blob, fontSize, font };
@@ -200,18 +198,15 @@ export async function stampImage(
     if (opts.keepExif && isJpeg) {
       try {
         const imageData = ctx.getImageData(0, 0, w, h);
-        return { blob: await encodeHiFiJpeg(file, imageData, w, h), fontSize, font };
+        return { blob: await encodeHiFiJpeg(file, imageData), fontSize, font };
       } catch {
         /* codec unavailable — fall back to canvas encode below */
       }
     }
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, mime, opts.quality ?? 0.95),
-    );
-    if (!blob) throw new Error('导出失败');
+    const blob = await canvasToBlob(canvas, mime, opts.quality ?? 0.95);
     // Re-attach the original EXIF (canvas strips it). Only JPEG carries it here.
-    const out = opts.keepExif && mime === 'image/jpeg' ? await preserveExif(file, blob, w, h) : blob;
+    const out = opts.keepExif && mime === 'image/jpeg' ? await preserveExif(file, blob) : blob;
     return { blob: out, fontSize, font };
   } finally {
     bitmap.close();

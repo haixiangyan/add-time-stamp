@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Clock, SlidersHorizontal, Download, Loader2 } from 'lucide-react';
-import { Dropzone } from '@/components/stamp/dropzone';
+import { Dropzone, filesFromDrop } from '@/components/stamp/dropzone';
+import { ImageUp } from 'lucide-react';
 import { Filmstrip } from '@/components/stamp/filmstrip';
 import { MetaPanel } from '@/components/stamp/meta-panel';
 import { PreviewStage } from '@/components/stamp/preview-stage';
@@ -15,14 +16,16 @@ import {
 } from '@/components/ui/resizable';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { PREVIEW_MAX_EDGE, resolveStampLabel } from '@/lib/client/preview';
-import { readImageMeta } from '@/lib/client/metadata';
-import { stampImage, stampedName } from '@/lib/client/render';
-import { isHeif, heifThumbnailBlob } from '@/lib/client/heif';
-import { zip } from 'fflate';
+import { stampedName } from '@/lib/client/render';
+import { isHeif } from '@/lib/client/heif';
+import { readMeta, renderStamp } from '@/lib/client/worker/service';
+import { runExport, type ExportTask } from '@/lib/client/export-sink';
 import {
   DEFAULT_FONTS,
   DEFAULT_SELECTED_FONTS,
+  filterImageFiles,
   type ImageItem,
+  type ImageMeta,
   type StampSettings,
 } from '@/lib/stamp-settings';
 import {
@@ -44,6 +47,13 @@ function downloadBlob(blob: Blob, name: string) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// Match the worker pool size: keep it fed without holding more than a few
+// full-resolution stamped blobs alive at once during a large export.
+const EXPORT_CONCURRENCY =
+  typeof navigator !== 'undefined'
+    ? Math.max(1, Math.min((navigator.hardwareConcurrency || 4) - 1, 4))
+    : 4;
 
 export default function Page() {
   const [items, setItems] = useState<ImageItem[]>([]);
@@ -76,55 +86,103 @@ export default function Page() {
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  // dragenter/dragleave fire on every child too, so track nesting depth and only
+  // clear the overlay once we've left the outermost element.
+  const dragDepth = useRef(0);
 
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
+  const loadingIds = useRef(new Set<string>());
+  const [loadingCount, setLoadingCount] = useState(0);
+
+  // Mirror items in a ref so stable callbacks can read the latest list without
+  // re-subscribing on every change (matters at thousands of items).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  // Meta/thumbnail results are coalesced and flushed once per animation frame,
+  // so a burst of completions doesn't fire one setItems (and a full-list
+  // reconcile) per photo — that O(n²) is what made large imports janky.
+  const pendingUpdates = useRef(new Map<string, Partial<ImageItem>>());
+  const flushHandle = useRef<number | null>(null);
+  const queueUpdate = useCallback((id: string, patch: Partial<ImageItem>) => {
+    pendingUpdates.current.set(id, { ...pendingUpdates.current.get(id), ...patch });
+    if (flushHandle.current != null) return;
+    flushHandle.current = requestAnimationFrame(() => {
+      flushHandle.current = null;
+      const updates = pendingUpdates.current;
+      pendingUpdates.current = new Map();
+      setItems((prev) => prev.map((i) => (updates.has(i.id) ? { ...i, ...updates.get(i.id)! } : i)));
+    });
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    dragDepth.current += 1;
+    setDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  }, []);
 
   const addFiles = useCallback((files: File[]) => {
     setItems((prev) => {
       const next = [...prev];
       for (const file of files) {
         const id = uid();
-        next.push({ id, file, url: URL.createObjectURL(file), meta: null });
+        // HEIC can't render from a raw object URL outside Safari, so leave its
+        // url empty until the worker decodes a thumbnail on demand. Other formats
+        // get an object URL the browser decodes lazily (only when scrolled in).
+        next.push({ id, file, url: isHeif(file) ? '' : URL.createObjectURL(file), meta: null });
       }
       return next;
     });
   }, []);
 
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      const all = await filesFromDrop(e.dataTransfer);
+      const files = filterImageFiles(all);
+      if (files.length) addFiles(files);
+    },
+    [addFiles],
+  );
+
+  // Load EXIF (+ HEIC thumbnail) for one item, on demand — the filmstrip calls
+  // this as thumbnails scroll into view, so importing a folder of thousands does
+  // no upfront work; each photo is parsed only when looked at (or exported).
+  const ensureMeta = useCallback(
+    (id: string) => {
+      if (loadingIds.current.has(id)) return;
+      const item = itemsRef.current.find((i) => i.id === id);
+      if (!item || item.meta) return;
+      loadingIds.current.add(id);
+      setLoadingCount((c) => c + 1);
+      readMeta(item.file, PREVIEW_MAX_EDGE)
+        .then(({ meta, thumb }) =>
+          queueUpdate(id, thumb ? { meta, url: URL.createObjectURL(thumb) } : { meta }),
+        )
+        .catch(() =>
+          queueUpdate(id, { meta: { exif: null, stampDate: null, error: '读取失败' } as ImageMeta }),
+        )
+        .finally(() => {
+          loadingIds.current.delete(id);
+          setLoadingCount((c) => c - 1);
+        });
+    },
+    [queueUpdate],
+  );
+
   useEffect(() => {
-    const unloaded = items.filter((i) => !i.meta);
-    for (const item of unloaded) {
-      loadMeta(item.id, item.file);
-    }
     if (!selectedId && items.length) setSelectedId(items[0].id);
   }, [items, selectedId]);
-
-  const loadMeta = async (id: string, file: File) => {
-    // HEIC can't render via a raw object URL outside Safari — decode a JPEG
-    // thumbnail so the filmstrip/preview show something.
-    if (isHeif(file)) {
-      heifThumbnailBlob(file, PREVIEW_MAX_EDGE)
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          setItems((prev) =>
-            prev.map((i) => {
-              if (i.id !== id) return i;
-              URL.revokeObjectURL(i.url);
-              return { ...i, url };
-            }),
-          );
-        })
-        .catch(() => {});
-    }
-    try {
-      const meta = await readImageMeta(file);
-      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, meta } : i)));
-    } catch {
-      setItems((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, meta: { exif: null, stampDate: null, error: '读取失败' } } : i)),
-      );
-    }
-  };
 
   const selectedItem = items.find((i) => i.id === selectedId) ?? null;
   const gps =
@@ -155,11 +213,17 @@ export default function Page() {
       setPreviewError(null);
       return;
     }
-    const seq = ++previewSeq.current;
-    setPreviewLoading(true);
-    setPreviewError(null);
 
     const s = settings;
+    // 'auto' needs EXIF — with lazy loading the selected item may not have it
+    // yet. Kick off the load and bail; this effect re-runs when meta arrives.
+    if (!item.meta && s.dateSource !== 'custom') {
+      ensureMeta(item.id);
+      setPreviewLoading(true);
+      setPreviewError(null);
+      return;
+    }
+
     const label = resolveStampLabel(item, s.dateSource, s.customDate);
     if (!label) {
       setPreviewUrl(null);
@@ -170,9 +234,13 @@ export default function Page() {
       return;
     }
 
+    const seq = ++previewSeq.current;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
     try {
-      // Render the stamp in the browser (downscaled for a responsive preview).
-      const { blob, fontSize, font } = await stampImage(item.file, label, {
+      // Render the stamp in a Worker (downscaled for a responsive preview).
+      const res = await renderStamp(item.file, { label }, {
         fonts: s.fonts.length ? s.fonts : DEFAULT_SELECTED_FONTS,
         color: s.color,
         position: s.position,
@@ -182,13 +250,20 @@ export default function Page() {
         maxEdge: PREVIEW_MAX_EDGE,
       });
       if (seq !== previewSeq.current) return;
+      if (!res) {
+        setPreviewUrl(null);
+        setPreviewError('无法获取日期');
+        setPreviewLabel('');
+        setPreviewFont('');
+        return;
+      }
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
+        return URL.createObjectURL(res.blob);
       });
       setPreviewLabel(label);
-      setPreviewFont(font);
-      setAutoFontSize(s.fontSize ? null : fontSize);
+      setPreviewFont(res.font);
+      setAutoFontSize(s.fontSize ? null : res.fontSize);
     } catch (e) {
       if (seq !== previewSeq.current) return;
       setPreviewUrl(null);
@@ -198,7 +273,7 @@ export default function Page() {
     } finally {
       if (seq === previewSeq.current) setPreviewLoading(false);
     }
-  }, [items, selectedId, settings]);
+  }, [items, selectedId, settings, ensureMeta]);
 
   useEffect(() => {
     refreshPreviewRef.current = refreshPreview;
@@ -232,21 +307,6 @@ export default function Page() {
     setStatus('');
   };
 
-  const downloadFiles = async (files: File[]) => {
-    if (files.length === 1) {
-      downloadBlob(files[0], files[0].name);
-      setStatus(`已下载 ${files[0].name}`);
-      return;
-    }
-    const entries: Record<string, Uint8Array> = {};
-    for (const f of files) entries[f.name] = new Uint8Array(await f.arrayBuffer());
-    const data = await new Promise<Uint8Array>((resolve, reject) =>
-      zip(entries, { level: 0 }, (err, out) => (err ? reject(err) : resolve(out))),
-    );
-    downloadBlob(new Blob([data as BlobPart], { type: 'application/zip' }), 'time-stamp-export.zip');
-    setStatus(`已下载 time-stamp-export.zip（${files.length}）`);
-  };
-
   const exportZip = async () => {
     if (!items.length) return;
     setExporting(true);
@@ -261,33 +321,65 @@ export default function Page() {
       offsetY: s.offsetY,
       keepExif: true,
     };
+    // The stamp text: precomputed when the item's meta is already loaded,
+    // otherwise the worker resolves it from EXIF (dateSource/customDate) so a
+    // lazily-imported folder doesn't need every photo parsed up front.
+    const dateOf = (item: ImageItem) => ({
+      label: item.meta ? resolveStampLabel(item, s.dateSource, s.customDate) : null,
+      dateSource: s.dateSource,
+      customDate: s.customDate,
+    });
+    const outName = (name: string) =>
+      stampedName(name).replace(/\.(heic|heif)$/i, '.jpg');
 
     try {
-      const files: File[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const label = resolveStampLabel(item, s.dateSource, s.customDate);
-        if (!label) continue;
-        setStatus(`处理中… ${i + 1}/${items.length}`);
-        // Render full-resolution in the browser — no upload, no size limit.
-        const { blob } = await stampImage(item.file, label, { ...opts, fontIndex: i });
-        // HEIC/HEIF are re-encoded to JPEG on export — reflect that in the name.
-        const name = stampedName(item.file.name).replace(/\.(heic|heif)$/i, '.jpg');
-        files.push(new File([blob], name, { type: blob.type }));
+      const targets = itemsRef.current;
+
+      // Single image keeps the direct-download UX (no zip, no folder prompt).
+      if (targets.length === 1) {
+        const it = targets[0];
+        const res = await renderStamp(it.file, dateOf(it), opts);
+        if (!res) throw new Error('没有可导出的图片（无法获取日期）');
+        const name = outName(it.file.name);
+        downloadBlob(res.blob, name);
+        setStatus(`已下载 ${name}`);
+        return;
       }
 
-      if (!files.length) throw new Error('没有可导出的图片（无法获取日期）');
+      // fontIndex uses each item's position so per-image font rotation matches
+      // the old behavior; render lazily inside each export task so the sink can
+      // stream results out with bounded memory.
+      const tasks: ExportTask[] = targets.map((item, i) => ({
+        name: outName(item.file.name),
+        render: async () => {
+          const res = await renderStamp(item.file, dateOf(item), { ...opts, fontIndex: i });
+          return res?.blob ?? null;
+        },
+      }));
 
-      await downloadFiles(files);
+      const summary = await runExport(tasks, {
+        concurrency: EXPORT_CONCURRENCY,
+        onProgress: (done, total) => setStatus(`处理中… ${done}/${total}`),
+      });
+
+      if (!summary.written) throw new Error('没有可导出的图片（无法获取日期）');
+      const skipNote = summary.skipped ? `，跳过 ${summary.skipped} 张（无日期）` : '';
+      setStatus(
+        summary.mode === 'folder'
+          ? `已导出 ${summary.written} 张到所选文件夹${skipNote}`
+          : `已导出 ${summary.written} 张${skipNote}`,
+      );
     } catch (e) {
-      setStatus(`失败: ${(e as Error).message}`);
+      // Folder-picker cancelled → treat as a benign cancel, not a failure.
+      if ((e as Error).name === 'AbortError') setStatus('已取消导出');
+      else setStatus(`失败: ${(e as Error).message}`);
     } finally {
       setExporting(false);
     }
   };
 
   const hasItems = items.length > 0;
-  const importing = items.some((i) => !i.meta);
+  const importing = loadingCount > 0;
 
   return (
     <div className="flex h-dvh flex-col">
@@ -310,12 +402,10 @@ export default function Page() {
             <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">批量给照片加怀旧日期水印</p>
           </div>
         </div>
-        {hasItems && (
-          <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 sm:flex">
-              <Dropzone onFiles={addFiles} compact loading={importing} />
-            </div>
-            {/* Mobile: export straight from the header (settings live in a drawer) */}
+        <div className="flex items-center gap-2">
+          <Dropzone onFiles={addFiles} loading={importing} />
+          {/* Mobile: export straight from the header (settings live in a drawer) */}
+          {hasItems && (
             <Button
               size="sm"
               className="lg:hidden"
@@ -329,17 +419,27 @@ export default function Page() {
               )}
               导出
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
-      <main className="min-h-0 flex-1 px-4 py-4 sm:px-6">
-        {!hasItems ? (
-          <div className="mx-auto max-w-2xl py-12">
-            <Dropzone onFiles={addFiles} />
+      <main
+        className="relative min-h-0 flex-1 px-4 py-4 sm:px-6"
+        onDragEnter={handleDragEnter}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag-drop overlay — accepts both images and whole folders. */}
+        {dragging && (
+          <div className="pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm">
+            <div className="flex size-14 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <ImageUp className="size-7" />
+            </div>
+            <p className="text-base font-medium text-primary">松开以导入图片 / 文件夹</p>
           </div>
-        ) : (
-          <>
+        )}
+        <>
             {/* Desktop: resizable three-pane layout.
                 Wrapped in a plain div because ResizablePanelGroup forces an
                 inline `display:flex`, which would override a `hidden` class. */}
@@ -377,6 +477,7 @@ export default function Page() {
                       onSelect={setSelectedId}
                       onRemove={removeItem}
                       onClear={clearAll}
+                      onVisible={ensureMeta}
                       loading={importing}
                     />
                   </ResizablePanel>
@@ -422,12 +523,12 @@ export default function Page() {
                   onSelect={setSelectedId}
                   onRemove={removeItem}
                   onClear={clearAll}
+                  onVisible={ensureMeta}
                   loading={importing}
                 />
               </div>
             </div>
-          </>
-        )}
+        </>
       </main>
 
       {/* Settings drawer (mobile). Mounted regardless of whether images are

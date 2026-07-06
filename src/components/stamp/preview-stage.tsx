@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ImageOff } from 'lucide-react';
+import { Loader2, ImageOff, ImagePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PreviewStageProps {
@@ -48,9 +48,20 @@ export function PreviewStage({
               <p className="text-sm">{error}</p>
             </>
           ) : empty ? (
-            <>
-              <p className="text-sm">点击底部缩略图预览…</p>
-            </>
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ImagePlus className="size-7" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-base font-medium text-foreground">还没有图片</p>
+                <p className="text-sm">
+                  点击右上角「添加图片」或「选择文件夹」导入
+                </p>
+                <p className="text-xs text-muted-foreground/80">
+                  也可直接把图片 / 文件夹拖拽到此处 · 支持 JPG / PNG / WebP / TIFF / HEIC
+                </p>
+              </div>
+            </div>
           ) : null}
         </div>
       )}

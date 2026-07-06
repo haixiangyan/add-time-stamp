@@ -1,6 +1,5 @@
 import encode, { init as initEncoder } from '@jsquash/jpeg/encode';
-import piexif from 'piexifjs';
-import { readIccSegments, readJpegFormat } from './jpeg';
+import { readExifTiff, readIccSegments, readJpegFormat } from './jpeg';
 
 // Serve the WASM ourselves and hand the compiled module to the codec, so we
 // don't depend on the bundler locating the .wasm.
@@ -16,44 +15,67 @@ function ensureEncoder(): Promise<void> {
   return encoderReady;
 }
 
-function binToU8(s: string): Uint8Array {
-  const a = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xff;
-  return a;
-}
-
-function u8ToBin(u8: Uint8Array): string {
-  let s = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < u8.length; i += CHUNK) s += String.fromCharCode(...u8.subarray(i, i + CHUNK));
-  return s;
-}
-
-// Build the APP1 (EXIF) segment from the original, with orientation reset to
-// normal (pixels are already baked upright) and dimensions updated.
-export function buildExifApp1(headBytes: Uint8Array, w: number, h: number): Uint8Array | null {
-  try {
-    const exifObj = piexif.load(u8ToBin(headBytes));
-    if (exifObj['0th']) exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
-    if (exifObj['Exif']) {
-      exifObj['Exif'][piexif.ExifIFD.PixelXDimension] = w;
-      exifObj['Exif'][piexif.ExifIFD.PixelYDimension] = h;
+// Overwrite the Orientation tag (0x0112) in a raw TIFF/EXIF block to 1 (normal),
+// since the exported pixels are already baked upright. Everything else is left
+// byte-for-byte intact. We deliberately do NOT round-trip through a full EXIF
+// library (piexifjs throws "unpack error" on Apple MakerNote, which silently
+// dropped ALL metadata — capture time, GPS — from every iPhone photo).
+function patchTiffOrientation(tiff: Uint8Array): Uint8Array {
+  const out = tiff.slice();
+  if (out.length < 8) return out;
+  const le = out[0] === 0x49 && out[1] === 0x49; // 'II' little-endian
+  const be = out[0] === 0x4d && out[1] === 0x4d; // 'MM' big-endian
+  if (!le && !be) return out;
+  const rd16 = (o: number) => (le ? out[o] | (out[o + 1] << 8) : (out[o] << 8) | out[o + 1]);
+  const rd32 = (o: number) =>
+    le
+      ? (out[o] | (out[o + 1] << 8) | (out[o + 2] << 16) | (out[o + 3] << 24)) >>> 0
+      : ((out[o] << 24) | (out[o + 1] << 16) | (out[o + 2] << 8) | out[o + 3]) >>> 0;
+  const wr16 = (o: number, v: number) => {
+    if (le) {
+      out[o] = v & 0xff;
+      out[o + 1] = (v >> 8) & 0xff;
+    } else {
+      out[o] = (v >> 8) & 0xff;
+      out[o + 1] = v & 0xff;
     }
-    exifObj['1st'] = {};
-    exifObj['thumbnail'] = null;
-    const payload = binToU8(piexif.dump(exifObj)); // "Exif\0\0" + TIFF
-    const len = payload.length + 2;
-    if (len > 0xffff) return null;
-    const seg = new Uint8Array(4 + payload.length);
-    seg[0] = 0xff;
-    seg[1] = 0xe1;
-    seg[2] = (len >> 8) & 0xff;
-    seg[3] = len & 0xff;
-    seg.set(payload, 4);
-    return seg;
-  } catch {
-    return null;
+  };
+  const ifd0 = rd32(4);
+  if (ifd0 + 2 > out.length) return out;
+  const count = rd16(ifd0);
+  let p = ifd0 + 2;
+  for (let i = 0; i < count; i++, p += 12) {
+    if (p + 12 > out.length) break;
+    if (rd16(p) === 0x0112) {
+      // Orientation is a SHORT stored inline in the entry's value field (p+8).
+      wr16(p + 8, 1);
+      break;
+    }
   }
+  return out;
+}
+
+// Wrap a raw TIFF/EXIF block into a JPEG APP1 ("Exif") segment (orientation reset
+// to normal). Returns null if it can't fit in a single 64KB APP1 marker.
+export function tiffToExifApp1(tiff: Uint8Array): Uint8Array | null {
+  const patched = patchTiffOrientation(tiff);
+  const payloadLen = 2 + 6 + patched.length; // length field + "Exif\0\0" + TIFF
+  if (payloadLen > 0xffff) return null;
+  const seg = new Uint8Array(2 + payloadLen);
+  seg[0] = 0xff;
+  seg[1] = 0xe1;
+  seg[2] = (payloadLen >> 8) & 0xff;
+  seg[3] = payloadLen & 0xff;
+  seg.set([0x45, 0x78, 0x69, 0x66, 0, 0], 4); // "Exif\0\0"
+  seg.set(patched, 10);
+  return seg;
+}
+
+// Build the APP1 (EXIF) segment from an original JPEG's head bytes, or null if it
+// carries no EXIF. Orientation is reset; all other tags are preserved verbatim.
+export function buildExifApp1(headBytes: Uint8Array): Uint8Array | null {
+  const tiff = readExifTiff(headBytes);
+  return tiff ? tiffToExifApp1(tiff) : null;
 }
 
 /**
@@ -62,18 +84,13 @@ export function buildExifApp1(headBytes: Uint8Array, w: number, h: number): Uint
  * "only add a watermark, keep everything else". Falls to the caller's fallback
  * (via thrown error) if the codec can't run.
  */
-export async function encodeHiFiJpeg(
-  originalFile: File,
-  imageData: ImageData,
-  width: number,
-  height: number,
-): Promise<Blob> {
+export async function encodeHiFiJpeg(originalFile: File, imageData: ImageData): Promise<Blob> {
   const origBytes = new Uint8Array(await originalFile.arrayBuffer());
   const { chromaSubsample, progressive } = readJpegFormat(origBytes);
   return assembleJpeg(imageData, {
     chromaSubsample,
     progressive,
-    app1: buildExifApp1(origBytes.subarray(0, 256 * 1024), width, height),
+    app1: buildExifApp1(origBytes.subarray(0, 256 * 1024)),
     icc: readIccSegments(origBytes),
   });
 }

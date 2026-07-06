@@ -43,6 +43,42 @@ export function readJpegFormat(bytes: Uint8Array): JpegFormat {
   return { chromaSubsample: 2, progressive: true };
 }
 
+/**
+ * Raw EXIF TIFF payload (the bytes after the "Exif\0\0" prefix) from the source
+ * JPEG's APP1 segment, or null if it has none. Returned verbatim so we can splice
+ * it into the output untouched — no fragile EXIF re-parsing.
+ */
+export function readExifTiff(bytes: Uint8Array): Uint8Array | null {
+  const sig = 'Exif\0\0';
+  let i = 2;
+  const n = bytes.length;
+  while (i + 4 <= n) {
+    if (bytes[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    const marker = bytes[i + 1];
+    if (isStandalone(marker)) {
+      i += 2;
+      continue;
+    }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (marker === 0xda) break;
+    if (marker === 0xe1) {
+      let match = true;
+      for (let k = 0; k < sig.length; k++) {
+        if (bytes[i + 4 + k] !== sig.charCodeAt(k)) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return bytes.slice(i + 4 + sig.length, i + 2 + len);
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
 /** Raw APP2 ICC_PROFILE segment(s) from the source, to copy verbatim into the output. */
 export function readIccSegments(bytes: Uint8Array): Uint8Array[] {
   const out: Uint8Array[] = [];

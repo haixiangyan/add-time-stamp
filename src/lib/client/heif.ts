@@ -3,7 +3,8 @@
 // (capture time / GPS) out of the ISOBMFF container so the exported JPEG keeps
 // it. The libheif bundle is loaded lazily — only when a HEIC file appears.
 
-import { buildExifApp1 } from './encode';
+import { tiffToExifApp1 } from './encode';
+import { createCanvas, get2d, canvasToBlob } from './canvas';
 
 type LibheifModule = typeof import('libheif-js/wasm-bundle').default;
 
@@ -48,17 +49,10 @@ export async function heifThumbnailBlob(file: File, maxEdge: number): Promise<Bl
   const h = Math.max(1, Math.round(src.height * scale));
   const bitmap = await createImageBitmap(src);
   try {
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no 2d context');
+    const canvas = createCanvas(w, h);
+    const ctx = get2d(canvas);
     ctx.drawImage(bitmap, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', 0.8),
-    );
-    if (!blob) throw new Error('thumbnail failed');
-    return blob;
+    return await canvasToBlob(canvas, 'image/jpeg', 0.8);
   } finally {
     bitmap.close();
   }
@@ -177,10 +171,11 @@ function findExifExtent(b: Uint8Array, meta: Box): { offset: number; length: num
 
 /**
  * Build a JPEG APP1 (EXIF) segment from a HEIC/HEIF file, with orientation reset
- * to normal and dimensions updated — mirrors the JPEG path so the exported JPEG
- * keeps the original capture time / GPS. Returns null if no EXIF is present.
+ * to normal — mirrors the JPEG path so the exported JPEG keeps the original
+ * capture time / GPS. Returns null if no EXIF is present. The raw TIFF is spliced
+ * verbatim (no EXIF-library round-trip) so Apple MakerNote data can't break it.
  */
-export function heifExifApp1(bytes: Uint8Array, w: number, h: number): Uint8Array | null {
+export function heifExifApp1(bytes: Uint8Array): Uint8Array | null {
   try {
     const meta = findBox(bytes, 0, bytes.length, 'meta');
     // 'meta' is a FullBox: skip its 4-byte version/flags before the child boxes.
@@ -195,26 +190,7 @@ export function heifExifApp1(bytes: Uint8Array, w: number, h: number): Uint8Arra
     const tiff = block.subarray(4 + tiffOffset);
     if (tiff.length < 8) return null;
 
-    // Wrap the raw TIFF into a minimal JPEG (SOI + APP1 + EOI) so we can reuse
-    // buildExifApp1 (which parses via piexif and patches orientation/size).
-    const sig = 'Exif\0\0';
-    const payloadLen = sig.length + tiff.length + 2;
-    if (payloadLen > 0xffff) return null;
-    const synthetic = new Uint8Array(2 + 4 + sig.length + tiff.length + 2);
-    let o = 0;
-    synthetic[o++] = 0xff;
-    synthetic[o++] = 0xd8; // SOI
-    synthetic[o++] = 0xff;
-    synthetic[o++] = 0xe1; // APP1
-    synthetic[o++] = (payloadLen >> 8) & 0xff;
-    synthetic[o++] = payloadLen & 0xff;
-    for (let i = 0; i < sig.length; i++) synthetic[o++] = sig.charCodeAt(i);
-    synthetic.set(tiff, o);
-    o += tiff.length;
-    synthetic[o++] = 0xff;
-    synthetic[o++] = 0xd9; // EOI
-
-    return buildExifApp1(synthetic, w, h);
+    return tiffToExifApp1(tiff);
   } catch {
     return null;
   }
