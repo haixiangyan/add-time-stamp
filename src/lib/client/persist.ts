@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Layout, LayoutChangedMeta } from 'react-resizable-panels';
 import {
   DEFAULT_COLOR,
@@ -50,10 +50,14 @@ export function saveSettings(settings: StampSettings) {
 
 export function usePersistedLayout(groupId: string) {
   const key = `${LAYOUT_PREFIX}${groupId}`;
-  const [defaultLayout] = useState<Layout | undefined>(() => {
-    if (typeof window === 'undefined') return undefined;
-    return safeParse<Layout>(localStorage.getItem(key)) ?? undefined;
-  });
+  const [defaultLayout, setDefaultLayout] = useState<Layout | undefined>(undefined);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setDefaultLayout(safeParse<Layout>(localStorage.getItem(key)) ?? undefined);
+    setReady(true);
+  }, [key]);
+
   const onLayoutChanged = (layout: Layout, meta: LayoutChangedMeta) => {
     if (!meta.isUserInteraction) return;
     try {
@@ -62,7 +66,7 @@ export function usePersistedLayout(groupId: string) {
       /* ignore */
     }
   };
-  return { defaultLayout, onLayoutChanged };
+  return { defaultLayout, onLayoutChanged, ready };
 }
 
 export function resetAllPersistence() {

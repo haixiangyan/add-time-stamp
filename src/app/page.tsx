@@ -461,6 +461,7 @@ export default function Page() {
                 Wrapped in a plain div because ResizablePanelGroup forces an
                 inline `display:flex`, which would override a `hidden` class. */}
             <div className="hidden h-full lg:block">
+            {mainLayout.ready && leftColLayout.ready && (
             <ResizablePanelGroup
               direction="horizontal"
               id="ts-main"
@@ -519,6 +520,7 @@ export default function Page() {
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
+            )}
             </div>
 
             {/* Mobile: preview on top, gallery below, settings in a drawer */}
