@@ -93,7 +93,7 @@ export class WorkerPool {
 
   stamp(
     file: File,
-    date: { label: string | null; dateSource?: string; customDate?: string },
+    date: { label: string | null; dateSource?: string; customDate?: string; dateFormat?: string },
     opts: StampRenderOpts,
   ): Promise<StampOk> {
     return this.run<StampOk>({ type: 'stamp', file, ...date, opts });

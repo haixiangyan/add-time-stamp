@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { Layout, LayoutChangedMeta } from 'react-resizable-panels';
-import { DEFAULT_COLOR, DEFAULT_FONTS, DEFAULT_SELECTED_FONTS, type StampSettings } from '@/lib/stamp-settings';
+import {
+  DEFAULT_COLOR,
+  DEFAULT_DATE_FORMAT,
+  DEFAULT_SELECTED_FONTS,
+  type StampSettings,
+} from '@/lib/stamp-settings';
 import { formatStampLabel } from './preview';
 
 const SETTINGS_KEY = 'ts-settings';
@@ -12,7 +17,8 @@ export const DEFAULT_SETTINGS: StampSettings = {
   position: 'bottom-right',
   dateSource: 'auto',
   customDate: formatStampLabel(new Date().toISOString()),
-  fontSize: '',
+  dateFormat: DEFAULT_DATE_FORMAT,
+  fontSize: '38',
   offsetX: 0,
   offsetY: 0,
 };

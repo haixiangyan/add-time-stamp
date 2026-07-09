@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import { ChevronDown, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBytes, type ImageItem } from '@/lib/stamp-settings';
+import { DEFAULT_DATE_FORMAT, formatBytes, type ImageItem } from '@/lib/stamp-settings';
+import { formatStampLabel } from '@/lib/client/preview';
 
 interface MetaPanelProps {
   item: ImageItem | null;
+  dateFormat?: string;
 }
 
-export function MetaPanel({ item }: MetaPanelProps) {
+export function MetaPanel({ item, dateFormat = DEFAULT_DATE_FORMAT }: MetaPanelProps) {
   const [open, setOpen] = useState(false);
   if (!item) return null;
 
@@ -28,7 +30,7 @@ export function MetaPanel({ item }: MetaPanelProps) {
     if (m.format) rows.push(['格式', m.format]);
     if (m.space) rows.push(['色彩空间', m.space]);
     if (m.density) rows.push(['DPI', String(m.density)]);
-    if (m.stampDate) rows.push(['水印日期', m.stampDate]);
+    if (m.stampDate) rows.push(['水印日期', formatStampLabel(m.stampDate, dateFormat)]);
     if (typeof m.latitude === 'number' && typeof m.longitude === 'number') {
       rows.push(['纬度', m.latitude.toFixed(6)]);
       rows.push(['经度', m.longitude.toFixed(6)]);

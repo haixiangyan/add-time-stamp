@@ -70,6 +70,7 @@ export interface StampDate {
   label?: string | null;
   dateSource?: string;
   customDate?: string;
+  dateFormat?: string;
 }
 
 /** Render a stamped image. Returns null when no date could be resolved (skipped). */
@@ -82,7 +83,12 @@ export async function renderStamp(
   if (p) {
     const res = await p.stamp(
       file,
-      { label: date.label ?? null, dateSource: date.dateSource, customDate: date.customDate },
+      {
+        label: date.label ?? null,
+        dateSource: date.dateSource,
+        customDate: date.customDate,
+        dateFormat: date.dateFormat,
+      },
       opts,
     );
     if (res.skipped || !res.blob) return null;
@@ -94,7 +100,9 @@ export async function renderStamp(
     if (date.dateSource === 'custom') label = date.customDate || null;
     else {
       const { readImageMeta } = await import('../metadata');
-      label = (await readImageMeta(file)).stampDate;
+      const { formatStampLabel } = await import('../preview');
+      const iso = (await readImageMeta(file)).stampDate;
+      label = iso ? formatStampLabel(iso, date.dateFormat) : null;
     }
   }
   if (!label) return null;

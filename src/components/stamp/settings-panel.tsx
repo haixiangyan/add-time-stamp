@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -18,6 +17,7 @@ import { Download, Loader2, MapPin, RotateCcw } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
 import {
+  DATE_FORMATS,
   DATE_SOURCE_LABELS,
   POSITION_LABELS,
   type StampSettings,
@@ -84,6 +84,64 @@ export function SettingsPanel({
         </CardHeader>
       )}
       <CardContent className="flex flex-1 flex-col gap-5 overflow-y-auto">
+        {settings.dateSource !== 'custom' && (
+          <div className="space-y-2">
+            <Label>日期格式</Label>
+            <Select
+              value={settings.dateFormat}
+              onValueChange={(v) => v && set('dateFormat', v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATE_FORMATS.map((f) => (
+                  <SelectItem key={f} value={f}>
+                    {f}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label>字体</Label>
+          <FontSelect
+            fonts={fonts}
+            selected={settings.fonts[0] ?? null}
+            onChange={(next) => set('fonts', [next])}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>字号</Label>
+          <Input
+            type="number"
+            min={8}
+            placeholder={autoFontSize != null ? String(autoFontSize) : '38'}
+            value={settings.fontSize}
+            onChange={(e) => set('fontSize', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>颜色</Label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={settings.color}
+              onChange={(e) => set('color', e.target.value)}
+              className="size-9 cursor-pointer rounded-md border border-input bg-background p-1"
+            />
+            <Input
+              value={settings.color}
+              onChange={(e) => set('color', e.target.value)}
+              className="font-mono"
+            />
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label>位置</Label>
           <Select
@@ -131,50 +189,6 @@ export function SettingsPanel({
               step={1}
               value={[settings.offsetY]}
               onValueChange={(v) => set('offsetY', firstNum(v))}
-            />
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-2">
-          <Label>字体</Label>
-          <FontSelect
-            fonts={fonts}
-            selected={settings.fonts[0] ?? null}
-            onChange={(next) => set('fonts', [next])}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label>
-            字号{' '}
-            <span className="text-xs font-normal text-muted-foreground">
-              px，{settings.fontSize ? '自定义' : '自动（清空恢复）'}
-            </span>
-          </Label>
-          <Input
-            type="number"
-            min={8}
-            placeholder="自动"
-            value={settings.fontSize !== '' ? settings.fontSize : (autoFontSize ?? '')}
-            onChange={(e) => set('fontSize', e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label>颜色</Label>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={settings.color}
-              onChange={(e) => set('color', e.target.value)}
-              className="size-9 cursor-pointer rounded-md border border-input bg-background p-1"
-            />
-            <Input
-              value={settings.color}
-              onChange={(e) => set('color', e.target.value)}
-              className="font-mono"
             />
           </div>
         </div>

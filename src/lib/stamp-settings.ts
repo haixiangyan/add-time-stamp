@@ -12,16 +12,22 @@ export const DATE_SOURCE_LABELS: Record<string, string> = {
   custom: '自定义',
 };
 
-// Kept in sync with the bundled fonts in web/src/lib/server/font-registry.ts
-export const DEFAULT_FONTS = [
-  'Arial',
-  'Times New Roman',
-  'Courier New',
-  'Roboto',
-  'Anton',
-  'Bebas Neue',
-  'DM Serif Display',
-];
+export const DATE_FORMATS = [
+  'yyyy mm dd',
+  'yyyy/mm/dd',
+  'yyyy/dd/mm',
+  'yyyy-mm-dd',
+  'yyyy.mm.dd',
+  'dd/mm/yyyy',
+  'mm/dd/yyyy',
+  'dd-mm-yyyy',
+  'yyyy年mm月dd日',
+  'yy mm dd',
+] as const;
+
+export type DateFormat = (typeof DATE_FORMATS)[number];
+
+export const DEFAULT_DATE_FORMAT: DateFormat = 'yyyy mm dd';
 
 export const DEFAULT_SELECTED_FONTS = ['Arial'];
 export const DEFAULT_COLOR = '#ff7a1a';
@@ -49,6 +55,7 @@ export interface StampSettings {
   position: string;
   dateSource: string;
   customDate: string;
+  dateFormat: string;
   fontSize: string;
   offsetX: number;
   offsetY: number;

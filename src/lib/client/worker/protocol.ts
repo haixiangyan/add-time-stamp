@@ -18,10 +18,11 @@ export interface StampRequest {
   id: number;
   file: File;
   /** Pre-resolved stamp text. When null, the worker resolves it from EXIF using
-   *  dateSource/customDate — so a large export doesn't need every meta preloaded. */
+   *  dateSource/customDate/dateFormat — so a large export doesn't need every meta preloaded. */
   label: string | null;
   dateSource?: string;
   customDate?: string;
+  dateFormat?: string;
   opts: StampRenderOpts;
 }
 

@@ -1,6 +1,5 @@
 import exifr from 'exifr';
 import type { ImageMeta } from '@/lib/stamp-settings';
-import { formatStampLabel } from './preview';
 
 // Serialize EXIF values for display: dates -> ISO strings, drop nested objects.
 function sanitize(exif: Record<string, unknown>): Record<string, unknown> {
@@ -21,6 +20,7 @@ function num(v: unknown): number | undefined {
  * Read image metadata entirely in the browser (EXIF via exifr), so the stamp
  * date is available immediately with no upload — no serverless round-trip, no
  * 4.5MB request limit, and no race between the first preview and the date.
+ * `stampDate` is stored as ISO so the UI can reformat it with any dateFormat.
  */
 export async function readImageMeta(file: File): Promise<ImageMeta> {
   let exif: Record<string, unknown> | null = null;
@@ -38,7 +38,7 @@ export async function readImageMeta(file: File): Promise<ImageMeta> {
       height = num(parsed.ExifImageHeight) ?? num(parsed.ImageHeight);
       const d = parsed.DateTimeOriginal ?? parsed.CreateDate ?? parsed.ModifyDate;
       if (d instanceof Date && !Number.isNaN(d.getTime())) {
-        stampDate = formatStampLabel(d.toISOString());
+        stampDate = d.toISOString();
       }
       const lat = num(parsed.latitude);
       const lng = num(parsed.longitude);
@@ -52,7 +52,7 @@ export async function readImageMeta(file: File): Promise<ImageMeta> {
   }
 
   if (!stampDate) {
-    stampDate = formatStampLabel(new Date(file.lastModified).toISOString());
+    stampDate = new Date(file.lastModified).toISOString();
   }
 
   return {

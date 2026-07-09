@@ -5,20 +5,26 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { type ImageItem } from '@/lib/stamp-settings';
+import { DEFAULT_DATE_FORMAT, type ImageItem } from '@/lib/stamp-settings';
+import { formatStampLabel } from '@/lib/client/preview';
 
 interface ThumbnailProps {
   item: ImageItem;
   selected: boolean;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
+  dateFormat: string;
 }
 
-function Thumbnail({ item, selected, onSelect, onRemove }: ThumbnailProps) {
+function Thumbnail({ item, selected, onSelect, onRemove, dateFormat }: ThumbnailProps) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     setLoaded(false);
   }, [item.url]);
+
+  const stampLabel = item.meta?.stampDate
+    ? formatStampLabel(item.meta.stampDate, dateFormat)
+    : null;
 
   return (
     <button
@@ -60,9 +66,9 @@ function Thumbnail({ item, selected, onSelect, onRemove }: ThumbnailProps) {
       </span>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-2 pb-1.5 pt-4">
         <p className="truncate text-[10px] font-medium text-white">{item.file.name}</p>
-        {item.meta?.stampDate ? (
+        {stampLabel ? (
           <Badge variant="secondary" className="w-fit px-1 py-0 text-[10px]">
-            {item.meta.stampDate}
+            {stampLabel}
           </Badge>
         ) : (
           <span className="truncate text-[10px] text-white/70">
@@ -83,6 +89,7 @@ interface FilmstripProps {
   /** Called for each item as it scrolls into view so the parent can lazily load it. */
   onVisible?: (id: string) => void;
   loading?: boolean;
+  dateFormat?: string;
 }
 
 // Layout constants (mirror the Tailwind classes on the track: p-3 / gap-2).
@@ -90,7 +97,16 @@ const PAD = 12;
 const GAP = 8;
 const OVERSCAN = 6;
 
-export function Filmstrip({ items, selectedId, onSelect, onRemove, onClear, onVisible, loading }: FilmstripProps) {
+export function Filmstrip({
+  items,
+  selectedId,
+  onSelect,
+  onRemove,
+  onClear,
+  onVisible,
+  loading,
+  dateFormat = DEFAULT_DATE_FORMAT,
+}: FilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -182,6 +198,7 @@ export function Filmstrip({ items, selectedId, onSelect, onRemove, onClear, onVi
           selected={item.id === selectedId}
           onSelect={onSelect}
           onRemove={onRemove}
+          dateFormat={dateFormat}
         />
       </div>,
     );

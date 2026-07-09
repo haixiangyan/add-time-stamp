@@ -1,44 +1,18 @@
 // Client-side stamp renderer. Draws the date watermark onto the image with a
-// <canvas> using the bundled fonts (loaded via FontFace), so both preview and
-// export run entirely in the browser — no upload, no serverless CPU/size limits.
-// The geometry mirrors the server renderer in lib/server/stamp.ts.
+// <canvas> using system fonts, so both preview and export run entirely in the
+// browser — no upload, no serverless CPU/size limits.
 
 import { preserveExif } from './exif';
 import { encodeHiFiJpeg, assembleJpeg } from './encode';
 import { isHeif, decodeHeif, heifExifApp1 } from './heif';
-import { createCanvas, get2d, canvasToBlob, getFontSet } from './canvas';
+import { createCanvas, get2d, canvasToBlob } from './canvas';
 
-const FONT_FILES: Record<string, string> = {
-  Arial: 'Arimo-Bold.ttf',
-  'Times New Roman': 'Tinos-Bold.ttf',
-  'Courier New': 'Cousine-Bold.ttf',
-  Roboto: 'Roboto-Bold.ttf',
-  Anton: 'Anton-Regular.ttf',
-  'Bebas Neue': 'BebasNeue-Regular.ttf',
-  'DM Serif Display': 'DMSerifDisplay-Regular.ttf',
-};
 const DEFAULT_FONT = 'Arial';
 const DEFAULT_COLOR = '#ff7a1a';
 
 const REF_LONG_EDGE = 4800;
 const FONT_SIZE_RATIO = 130 / REF_LONG_EDGE;
 const PADDING_RATIO = 300 / REF_LONG_EDGE;
-
-const fontPromises = new Map<string, Promise<void>>();
-
-/** Load (once) and register a bundled font so canvas can draw with it. */
-function ensureFont(name: string): Promise<void> {
-  const key = FONT_FILES[name] ? name : DEFAULT_FONT;
-  let p = fontPromises.get(key);
-  if (!p) {
-    const face = new FontFace(key, `url(/fonts/${FONT_FILES[key]})`);
-    p = face.load().then((loaded) => {
-      getFontSet().add(loaded);
-    });
-    fontPromises.set(key, p);
-  }
-  return p;
-}
 
 function alignFor(position: string): CanvasTextAlign {
   if (position.endsWith('left')) return 'left';
@@ -117,19 +91,16 @@ export async function stampImage(
 ): Promise<StampRenderResult> {
   const font = pickFont(opts);
   const heif = isHeif(file);
-  const [bitmap] = await Promise.all([
-    heif
-      ? // HEIC/HEIF: decode with libheif (browsers can't via createImageBitmap),
-        // then wrap the RGBA into a bitmap so the rest of the path is unchanged.
-        decodeHeif(file).then((data) => createImageBitmap(data))
-      : // keepExif (export): don't let the browser convert wide-gamut pixels to
-        // sRGB — we keep the raw values and re-attach the original ICC profile.
-        createImageBitmap(file, {
-          imageOrientation: 'from-image',
-          colorSpaceConversion: opts.keepExif ? 'none' : 'default',
-        }),
-    ensureFont(font),
-  ]);
+  const bitmap = await (heif
+    ? // HEIC/HEIF: decode with libheif (browsers can't via createImageBitmap),
+      // then wrap the RGBA into a bitmap so the rest of the path is unchanged.
+      decodeHeif(file).then((data) => createImageBitmap(data))
+    : // keepExif (export): don't let the browser convert wide-gamut pixels to
+      // sRGB — we keep the raw values and re-attach the original ICC profile.
+      createImageBitmap(file, {
+        imageOrientation: 'from-image',
+        colorSpaceConversion: opts.keepExif ? 'none' : 'default',
+      }));
   try {
     let w = bitmap.width;
     let h = bitmap.height;

@@ -21,7 +21,6 @@ import { isHeif } from '@/lib/client/heif';
 import { readMeta, renderStamp } from '@/lib/client/worker/service';
 import { runExport, type ExportTask } from '@/lib/client/export-sink';
 import {
-  DEFAULT_FONTS,
   DEFAULT_SELECTED_FONTS,
   filterImageFiles,
   type ImageItem,
@@ -34,6 +33,7 @@ import {
   saveSettings,
   usePersistedLayout,
 } from '@/lib/client/persist';
+import { listSystemFonts } from '@/lib/client/system-fonts';
 
 const uid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -58,7 +58,7 @@ const EXPORT_CONCURRENCY =
 export default function Page() {
   const [items, setItems] = useState<ImageItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const fonts = DEFAULT_FONTS;
+  const [fonts, setFonts] = useState<string[]>(DEFAULT_SELECTED_FONTS);
   const positions = [
     'bottom-right',
     'bottom-left',
@@ -68,6 +68,22 @@ export default function Page() {
     'top-center',
   ];
   const [settings, setSettings] = useState<StampSettings>(() => loadSettings());
+
+  useEffect(() => {
+    let cancelled = false;
+    listSystemFonts().then((list) => {
+      if (cancelled || !list.length) return;
+      setFonts(list);
+      setSettings((s) => {
+        const cur = s.fonts[0];
+        if (cur && list.includes(cur)) return s;
+        return { ...s, fonts: [list.includes('Arial') ? 'Arial' : list[0]] };
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const mainLayout = usePersistedLayout('ts-main');
   const leftColLayout = usePersistedLayout('ts-left-col');
@@ -224,7 +240,7 @@ export default function Page() {
       return;
     }
 
-    const label = resolveStampLabel(item, s.dateSource, s.customDate);
+    const label = resolveStampLabel(item, s.dateSource, s.customDate, s.dateFormat);
     if (!label) {
       setPreviewUrl(null);
       setPreviewError('无法获取日期');
@@ -325,9 +341,10 @@ export default function Page() {
     // otherwise the worker resolves it from EXIF (dateSource/customDate) so a
     // lazily-imported folder doesn't need every photo parsed up front.
     const dateOf = (item: ImageItem) => ({
-      label: item.meta ? resolveStampLabel(item, s.dateSource, s.customDate) : null,
+      label: item.meta ? resolveStampLabel(item, s.dateSource, s.customDate, s.dateFormat) : null,
       dateSource: s.dateSource,
       customDate: s.customDate,
+      dateFormat: s.dateFormat,
     });
     const outName = (name: string) =>
       stampedName(name).replace(/\.(heic|heif)$/i, '.jpg');
@@ -466,7 +483,7 @@ export default function Page() {
                       loading={previewLoading}
                       error={previewError}
                       empty={!selectedItem}
-                      overlay={<MetaPanel item={selectedItem} />}
+                      overlay={<MetaPanel item={selectedItem} dateFormat={settings.dateFormat} />}
                     />
                   </ResizablePanel>
                   <ResizableHandle direction="vertical" withHandle />
@@ -479,6 +496,7 @@ export default function Page() {
                       onClear={clearAll}
                       onVisible={ensureMeta}
                       loading={importing}
+                      dateFormat={settings.dateFormat}
                     />
                   </ResizablePanel>
                 </ResizablePanelGroup>
@@ -513,7 +531,7 @@ export default function Page() {
                   loading={previewLoading}
                   error={previewError}
                   empty={!selectedItem}
-                  overlay={<MetaPanel item={selectedItem} />}
+                  overlay={<MetaPanel item={selectedItem} dateFormat={settings.dateFormat} />}
                 />
               </div>
               <div className="h-40 shrink-0">
@@ -525,6 +543,7 @@ export default function Page() {
                   onClear={clearAll}
                   onVisible={ensureMeta}
                   loading={importing}
+                  dateFormat={settings.dateFormat}
                 />
               </div>
             </div>

@@ -1,4 +1,5 @@
 import type { ImageItem } from '@/lib/stamp-settings';
+import { DEFAULT_DATE_FORMAT } from '@/lib/stamp-settings';
 import { createCanvas, get2d, canvasToBlob } from './canvas';
 
 // Matches the server's preview downscale (stampPreviewBuffer previewMaxEdge).
@@ -35,8 +36,7 @@ function exifDateIso(meta: ImageItem['meta']): string | null {
 /**
  * Resolve the stamp timestamp on the client, mirroring the server's date logic.
  * Needed because the downscaled preview image has no EXIF for the server to read.
- * Returns an ISO string (formatted to `YYYY MM DD` server-side) or null when the
- * selected source has no date.
+ * Returns an ISO string or null when the selected source has no date.
  */
 export function resolveDateIso(item: ImageItem, dateSource: string, customDate?: string): string | null {
   const fileIso = new Date(item.file.lastModified).toISOString();
@@ -44,26 +44,35 @@ export function resolveDateIso(item: ImageItem, dateSource: string, customDate?:
   return exif ?? fileIso; // auto
 }
 
-/** Format an ISO timestamp as the `YYYY MM DD` stamp label (UTC, matching the server). */
-export function formatStampLabel(iso: string): string {
+/** Format an ISO timestamp with the given pattern (UTC). */
+export function formatStampLabel(iso: string, format: string = DEFAULT_DATE_FORMAT): string {
   const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()} ${p(d.getUTCMonth() + 1)} ${p(d.getUTCDate())}`;
+  if (Number.isNaN(d.getTime())) return iso;
+  const yyyy = String(d.getUTCFullYear());
+  const yy = yyyy.slice(-2);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return format
+    .replace(/yyyy/g, yyyy)
+    .replace(/yy/g, yy)
+    .replace(/mm/g, mm)
+    .replace(/dd/g, dd);
 }
 
 /**
- * The stamp label for an item. For `auto` we reuse the server-computed
- * `meta.stampDate` so it matches the thumbnail badge exactly; otherwise we
- * resolve and format the date on the client. For `custom` the raw text is
- * returned as-is (no validation, no formatting).
+ * The stamp label for an item. For `custom` the raw text is returned as-is.
+ * Otherwise the date is formatted with `dateFormat`.
  */
 export function resolveStampLabel(
   item: ImageItem,
   dateSource: string,
   customDate?: string,
+  dateFormat: string = DEFAULT_DATE_FORMAT,
 ): string | null {
   if (dateSource === 'custom') return customDate || null;
-  if (dateSource === 'auto' && item.meta?.stampDate) return item.meta.stampDate;
-  const iso = resolveDateIso(item, dateSource, customDate);
-  return iso ? formatStampLabel(iso) : null;
+  const iso =
+    dateSource === 'auto' && item.meta?.stampDate
+      ? item.meta.stampDate
+      : resolveDateIso(item, dateSource, customDate);
+  return iso ? formatStampLabel(iso, dateFormat) : null;
 }

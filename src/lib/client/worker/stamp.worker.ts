@@ -5,6 +5,7 @@
 // OffscreenCanvas via the shared canvas helpers.
 
 import { readImageMeta } from '../metadata';
+import { formatStampLabel } from '../preview';
 import { isHeif, heifThumbnailBlob } from '../heif';
 import { stampImage } from '../render';
 import type { WorkerRequest, WorkerResponse } from './protocol';
@@ -32,14 +33,16 @@ ctx.onmessage = async (e) => {
       ctx.postMessage({ type: 'meta', id: msg.id, ok: true, meta, thumb });
     } else if (msg.type === 'stamp') {
       // Resolve the stamp text here when the caller didn't precompute it (lazy
-      // export): 'custom' uses the literal text, otherwise fall back to EXIF /
-      // file time via readImageMeta.stampDate.
+      // export): 'custom' uses the literal text, otherwise format EXIF / file
+      // time ISO with dateFormat.
       let label = msg.label;
       if (!label) {
-        label =
-          msg.dateSource === 'custom'
-            ? msg.customDate || null
-            : (await readImageMeta(msg.file)).stampDate;
+        if (msg.dateSource === 'custom') {
+          label = msg.customDate || null;
+        } else {
+          const iso = (await readImageMeta(msg.file)).stampDate;
+          label = iso ? formatStampLabel(iso, msg.dateFormat) : null;
+        }
       }
       if (!label) {
         ctx.postMessage({ type: 'stamp', id: msg.id, ok: true, skipped: true, blob: null, fontSize: 0, font: '' });
