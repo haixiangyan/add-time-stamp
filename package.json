@@ -9,7 +9,8 @@
     "prebuild": "npm run build:worker",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "npm run build && wrangler pages deploy out --project-name=time-stamp --branch=time-stamp --commit-dirty=true"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
